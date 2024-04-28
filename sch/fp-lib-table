@@ -1,0 +1,6 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "FT260S_U")(type "KiCad")(uri "${KIPRJMOD}/FT260S_U.pretty")(options "")(descr ""))
+  (lib (name "LC76G")(type "KiCad")(uri "${KIPRJMOD}/LC76G.pretty")(options "")(descr ""))
+  (lib (name "YG0062AA")(type "KiCad")(uri "${KIPRJMOD}/YG0062AA.pretty")(options "")(descr ""))
+)
