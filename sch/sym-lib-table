@@ -1,6 +1,7 @@
 (sym_lib_table
   (version 7)
-  (lib (name "telescope")(type "KiCad")(uri "${KIPRJMOD}/telescope.kicad_sym")(options "")(descr ""))
   (lib (name "LC76G")(type "KiCad")(uri "${KIPRJMOD}/LC76G.kicad_sym")(options "")(descr ""))
   (lib (name "FT260S_U")(type "KiCad")(uri "${KIPRJMOD}/FT260S_U.kicad_sym")(options "")(descr ""))
+  (lib (name "AP62200WU_7")(type "KiCad")(uri "${KIPRJMOD}/AP62200WU_7.kicad_sym")(options "")(descr ""))
+  (lib (name "A5984")(type "KiCad")(uri "${KIPRJMOD}/A5984.kicad_sym")(options "")(descr ""))
 )
