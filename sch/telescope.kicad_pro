@@ -34,9 +34,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.762,
-          "height": 1.524,
-          "width": 1.524
+          "drill": 0.0,
+          "height": 0.18378,
+          "width": 0.18378
         },
         "silk_line_width": 0.15,
         "silk_text_italic": false,
@@ -48,8 +48,18 @@
           "min_clearance": 0.5
         }
       },
-      "diff_pair_dimensions": [],
-      "drc_exclusions": [],
+      "diff_pair_dimensions": [
+        {
+          "gap": 0.0,
+          "via_gap": 0.0,
+          "width": 0.0
+        }
+      ],
+      "drc_exclusions": [
+        "clearance|220918123|105685285|4ca8d74c-4834-4b23-bf24-a0f5807e5dce|c6689d53-075a-4a4a-bf29-3ccc2dca8913",
+        "silk_edge_clearance|213130000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|489e795a-e692-4b1f-90ff-841660086a0b",
+        "silk_edge_clearance|231370000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|17da474d-aa27-490e-953f-4e8183421508"
+      ],
       "meta": {
         "version": 2
       },
@@ -112,11 +122,11 @@
         "min_hole_to_hole": 0.25,
         "min_microvia_diameter": 0.19999999999999998,
         "min_microvia_drill": 0.09999999999999999,
-        "min_resolved_spokes": 2,
+        "min_resolved_spokes": 1,
         "min_silk_clearance": 0.0,
         "min_text_height": 0.7999999999999999,
         "min_text_thickness": 0.08,
-        "min_through_hole_diameter": 0.3,
+        "min_through_hole_diameter": 0.19999999999999998,
         "min_track_width": 0.0,
         "min_via_annular_width": 0.09999999999999999,
         "min_via_diameter": 0.5,
@@ -165,8 +175,16 @@
           "td_width_to_size_filter_ratio": 0.9
         }
       ],
-      "track_widths": [],
-      "via_dimensions": [],
+      "track_widths": [
+        0.0,
+        0.6
+      ],
+      "via_dimensions": [
+        {
+          "diameter": 0.0,
+          "drill": 0.0
+        }
+      ],
       "zones_allow_external_fillets": false
     },
     "layer_presets": [],
