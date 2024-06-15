@@ -6469,7 +6469,7 @@
     (property "Reference" "R25" (at 132.461 185.4779 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
-    (property "Value" "33k2" (at 132.461 187.9021 0)
+    (property "Value" "10k" (at 132.461 187.9021 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Footprint" "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" (at 130.81 186.69 0)
