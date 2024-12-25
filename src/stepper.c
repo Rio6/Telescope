@@ -79,7 +79,7 @@ bool stepper_busy(stepper_E stepper) {
 
 void stepper_step(stepper_E stepper, int32_t steps) {
    stepper_state_S *state = &stepper_states[stepper];
-   gpio_set_level(state->pins.dir, steps > 0);
-   state->target = state->steps + steps;
+   state->target += steps;
    state->pulse_counter = 1;
+   gpio_set_level(state->pins.dir, state->target > state->steps);
 }

@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 typedef enum {
-   STEPPER_0 = 0,
+   STEPPER_0  = 0,
    STEPPER_RA = 0,
    STEPPER_DE,
    STEPPER_COUNT,
@@ -23,8 +23,13 @@ typedef enum {
 } stepper_ustep_E;
 
 void stepper_init(void);
-void stepper_task(void);
+
 bool stepper_busy(stepper_E stepper);
+uint32_t stepper_cpr(stepper_E stepper);
+
+void stepper_period(stepper_E stepper, uint32_t period);
 void stepper_step(stepper_E stepper, int32_t steps);
+void stepper_start(stepper_E stepper);
+void stepper_Stop(stepper_E stepper);
 
 #endif
