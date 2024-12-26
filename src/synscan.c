@@ -1,6 +1,9 @@
 #include "synscan.h"
+#include "stepper.h"
+
 #include <driver/uart.h>
 #include <freertos/queue.h>
+#include <string.h>
 
 typedef enum {
    SS_IF_UART = 0,
@@ -11,7 +14,7 @@ typedef enum {
 
 typedef enum {
    SS_ERR_UNKNOWN_COMMAND = 0,
-   SS_ERR_LENGTH,
+   SS_ERR_COMMAND_LENGTH,
    SS_ERR_NOT_STOPPED,
    SS_ERR_INVAID_CHAR,
    SS_ERR_NOT_INIT,
@@ -26,11 +29,16 @@ typedef enum {
 } ss_parser_status_E;
 
 typedef struct {
-   uint8_t len;
-   uint8_t header;
-   uint8_t data[8];
-
    ss_parser_status_E status;
+   uint8_t plen;
+   uint8_t channel;
+   union {
+      struct {
+         uint8_t header;
+         uint8_t payload[7];
+      };
+      uint8_t data[8];
+   };
 } ss_parser_S;
 
 static ss_parser_S parsers[SS_IF_COUNT] = {0};
@@ -38,9 +46,11 @@ static ss_parser_S parsers[SS_IF_COUNT] = {0};
 static QueueHandle_t uart_queue;
 
 static void ss_parse(ss_parser_S *parser, uint8_t byte);
-static size_t ss_response(ss_parser_S *parser, uint8_t *resp);
-static uint8_t from_hex(uint8_t hex);
-static uint8_t to_hex(uint8_t num);
+static uint32_t ss_get_payload(ss_parser_S *parser);
+static void ss_construct_resp(ss_parser_S *parser, ss_error_E error, uint32_t payload, size_t plen);
+static stepper_E ss_get_stepper(ss_parser_S *parser, bool start);
+static uint8_t hexify(uint8_t num);
+static uint8_t unhexify(uint8_t hex);
 
 void ss_init(void) {
    // uart setup
@@ -74,45 +84,164 @@ void ss_task(void) {
 
    for(ss_interface_E i = 0; i < SS_IF_COUNT; i++) {
       ss_parser_S *parser = &parsers[i];
-      ss_error_E error = SS_OK;
-
       if(parser->status != SS_PARSED) continue;
 
       // handle command
       // https://inter-static.skywatcher.com/downloads/skywatcher_motor_controller_command_set.pdf
-      switch(parser->data[0]) {
+
+      #define SS_CHECK(MAX_C, L) \
+      if(parser->channel > (MAX_C) || parser->plen != (L)) { \
+         ss_construct_resp(parser, SS_ERR_COMMAND_LENGTH, 0, 0); \
+         break; \
+      };
+
+      switch(parser->header) {
+         case '+': // AT command, ignore
+            memcpy(parser->data, "OK\r", 3);
+            parser->plen = 2;
+            break;
+
+         case 'F': // initialization done
+            SS_CHECK(3, 0);
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+
+         case 'e': // inquire motor board version
+            SS_CHECK(3, 0);
+            ss_construct_resp(parser, SS_OK, 0x000030, 6); // 3.0
+            break;
+
+         case 'a': { // inquire counts per revolution
+            SS_CHECK(2, 0);
+            uint32_t cpr = stepper_cpr(ss_get_stepper(parser, true));
+            ss_construct_resp(parser, SS_OK, cpr, 6);
+            break;
+         }
+
+         case 'f': { // inquire status
+            SS_CHECK(2, 0);
+            stepper_E stepper   = ss_get_stepper(parser, true);
+            stepper_mode_E mode = stepper_get_mode(stepper);
+            stepper_dir_E dir   = stepper_get_dir(stepper);
+            bool busy           = stepper_busy(stepper);
+
+            uint16_t status = (mode << 0)
+                            | (dir  << 1)
+                            | (busy << 4)
+                            | (1    << 6); // init done
+
+            ss_construct_resp(parser, SS_OK, status, 4);
+            break;
+         }
+
+         case 'b': // inquire timer frequency
+            SS_CHECK(1, 0);
+            ss_construct_resp(parser, SS_OK, STEPPER_FREQ, 4);
+            break;
+
          case 'E': // set position
-         case 'F': // init done
-         case 'G': // set motion mode
-         case 'S': // set goto target
-         case 'I': // set step period (T1)
+            SS_CHECK(3, 6);
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+
+         case 'G': { // set motion mode
+            SS_CHECK(3, 2);
+            uint32_t payload = ss_get_payload(parser);
+            stepper_mode_E mode = payload & 1;
+            stepper_dir_E dir = (payload >> 4) & 1;
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               stepper_set_mode_dir(stepper, mode, dir);
+            }
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+         }
+
+         case 'S': { // set goto target
+            SS_CHECK(3, 6);
+            uint32_t target = ss_get_payload(parser);
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               stepper_set_goal(stepper, target);
+            }
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+         }
+
+         case 'I': { // set step period (T1)
+            SS_CHECK(3, 6);
+            uint32_t period = ss_get_payload(parser);
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               stepper_set_period(stepper, period);
+            }
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+         }
+
          case 'J': // start motion
+            SS_CHECK(3, 0);
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               stepper_start(stepper);
+            }
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+
          case 'K': // stop motion
          case 'L': // instant stop
-         case 'O': // aux switch
-         case 'P': // AutoGuide speed
-         case 'a': // inquire counts per revolution
-         case 'b': // inquire timer frequency
-         case 'h': // inquire goto target
-         case 'i': // inquire step period
-         case 'j': // inquire position
-         case 'f': // inquire status
+            SS_CHECK(3, 0);
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               stepper_stop(stepper);
+            }
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+
+         case 'h': { // inquire goto target
+            SS_CHECK(2, 0);
+            uint32_t target = stepper_get_goal(ss_get_stepper(parser, true));
+            ss_construct_resp(parser, SS_OK, target, 6);
+            break;
+         }
+
+         case 'i': { // inquire step period
+            SS_CHECK(2, 0);
+            uint32_t target = stepper_get_period(ss_get_stepper(parser, true));
+            ss_construct_resp(parser, SS_OK, target, 6);
+            break;
+         }
+
+         case 'j':    // inquire position
+         case 'D':  { // inquire axis position, not sure what the difference is
+            SS_CHECK(2, 0);
+            uint32_t target = stepper_count(ss_get_stepper(parser, true));
+            ss_construct_resp(parser, SS_OK, target, 6);
+            break;
+         }
+
          case 'g': // inquire high speed ratio
-         case 'D': // inquire axis position
-         case 'e': // inquire motor board version
+            SS_CHECK(2, 0);
+            ss_construct_resp(parser, SS_OK, 1, 2);
+            break;
+
+         case 'O': // aux switch
+            SS_CHECK(3, 0);
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+
+         case 'P': // AutoGuide speed
+            SS_CHECK(3, 0);
+            ss_construct_resp(parser, SS_OK, 0, 0);
+            break;
+
          default:
-            error = SS_ERR_UNKNOWN_COMMAND;
+            ss_construct_resp(parser, SS_ERR_UNKNOWN_COMMAND, 0, 0);
             break;
       }
+      #undef SS_CHECK_LEN
 
       parser->status = SS_HANDLED;
    }
 
    // send serial
    if(uart_parser->status == SS_HANDLED) {
-      uint8_t resp[8] = {0};
-      uint8_t len = ss_response(uart_parser, resp);
-      uart_write_bytes(UART_NUM_0, resp, len);
+      uart_write_bytes(UART_NUM_0, uart_parser->data, uart_parser->plen+1);
       uart_parser->status = SS_PARSING;
    }
 
@@ -125,58 +254,89 @@ static void ss_parse(ss_parser_S *parser, uint8_t byte) {
       return;
    }
 
-   if(parser->len >= sizeof(parser->data)) {
-      // shouldn't happen, overflow buffer
-      parser->len = 0;
+   if(parser->plen >= sizeof(parser->payload)) {
+      parser->plen = 0;
    }
 
-   if(byte == ':') {
-      parser->len = 0;
-   } else if(byte == '\r') {
+   if((byte == '_' || byte == '\r') && (parser->header != 0 && parser->channel != 0)) {
       parser->status = SS_PARSED;
+
+   } else if(byte == ':') { // start of command
+      parser->plen = 0;
+      parser->header = 0;
+      parser->channel = 0;
+
+   } else if(byte == '+') { // AT commands
+      parser->plen = 0;
+      parser->header = '+';
+      parser->channel = 3; // arbitrary
+
+   } else if(parser->header == 0) { // header
+      parser->header = byte;
+
+   } else if(parser->channel == 0) { // channel
+      parser->channel = unhexify(byte);
+
+   } else { // data
+      parser->payload[parser->plen++] = byte;
+   }
+}
+
+static uint32_t ss_get_payload(ss_parser_S *parser) {
+   uint32_t num = 0;
+   for(int i = 0; i < parser->plen; i++) {
+      num = (num << 4) | unhexify(parser->data[i]);
+   }
+   return num;
+}
+
+static void ss_construct_resp(ss_parser_S *parser, ss_error_E error, uint32_t payload, size_t plen) {
+   if(error != SS_OK) {
+      parser->header = '!';
+      parser->payload[0] = '0' + error;
+      parser->payload[1] = '\r';
+      parser->plen = 2;
    } else {
-      parser->data[parser->len++] = byte;
+      if(plen > 6) plen = 6;
+      parser->header = '=';
+      parser->plen = 0;
+      while(parser->plen < plen) {
+         parser->payload[parser->plen++] = hexify(payload & 0xF);
+         payload >>= 4;
+      }
+      parser->payload[parser->plen++] = '\r';
    }
 }
 
-static size_t ss_response(ss_parser_S *parser, uint8_t *resp) {
-   if(parser->error != SS_OK) {
-      resp[0] = '!';
-      resp[1] = '0' + parser->error;
-      resp[2] = '\r';
-      return 3;
-   }
+static stepper_E ss_get_stepper(ss_parser_S *parser, bool start) {
+   if(parser->channel == 1)
+     return STEPPER_RA;
 
-   uint8_t len = 0;
-   resp[len++] = '=';
-   for(int i = 0; i < parser->len; i++) {
-      //resp[len++] = to_hex(parser->data[i]);
-   }
-   resp[len++] = '\r';
-   return len;
+   if(parser->channel == 2)
+      return STEPPER_DE;
+
+   if(start)
+      return STEPPER_RA;
+
+   return STEPPER_DE;
 }
 
-static uint8_t from_hex(uint8_t hex) {
-   if(hex >= '0' && hex <= '9') {
+static uint8_t hexify(uint8_t num) {
+   num = num % 16;
+   if(num < 10) {
+      return num + '0';
+   }
+   return num - 10 + 'A';
+}
+
+static uint8_t unhexify(uint8_t hex) {
+   if('0' <= hex && hex <= '9') {
       return hex - '0';
    }
-   if(hex >= 'a' && hex <= 'f') {
+   if('a' <= hex && hex <= 'f') {
       return hex - 'a' + 10;
    }
-   if(hex >= 'A' && hex <= 'F') {
-      return hex - 'A' + 10;
-   }
-   return 0;
-}
-
-static uint8_t to_hex(uint8_t num) {
-   if(hex >= '0' && hex <= '9') {
-      return hex - '0';
-   }
-   if(hex >= 'a' && hex <= 'f') {
-      return hex - 'a' + 10;
-   }
-   if(hex >= 'A' && hex <= 'F') {
+   if('A' <= hex && hex <= 'F') {
       return hex - 'A' + 10;
    }
    return 0;

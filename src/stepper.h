@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define STEPPER_FREQ 1000
+#define STEPPER_GEAR_RATIO 450 // TODO actually measure it
+#define STEPPER_STEPS_PER_REV 200
+
 typedef enum {
    STEPPER_0  = 0,
    STEPPER_RA = 0,
@@ -22,14 +26,32 @@ typedef enum {
    STEPPER_USTEP_8,
 } stepper_ustep_E;
 
+typedef enum {
+   STEPPER_GOTO,
+   STEPPER_TRACKING,
+} stepper_mode_E;
+
+typedef enum {
+   STEPPER_CW,
+   STEPPER_CCW,
+} stepper_dir_E;
+
 void stepper_init(void);
 
-bool stepper_busy(stepper_E stepper);
-uint32_t stepper_cpr(stepper_E stepper);
+bool stepper_busy(stepper_E);
+uint32_t stepper_cpr(stepper_E);
+uint32_t stepper_count(stepper_E);
 
-void stepper_period(stepper_E stepper, uint32_t period);
-void stepper_step(stepper_E stepper, int32_t steps);
-void stepper_start(stepper_E stepper);
-void stepper_Stop(stepper_E stepper);
+void stepper_set_period(stepper_E, uint32_t);
+void stepper_set_goal(stepper_E, uint32_t);
+void stepper_set_mode_dir(stepper_E, stepper_mode_E, stepper_dir_E);
+
+uint32_t stepper_get_period(stepper_E);
+uint32_t stepper_get_goal(stepper_E);
+stepper_mode_E stepper_get_mode(stepper_E);
+stepper_dir_E stepper_get_dir(stepper_E);
+
+void stepper_start(stepper_E);
+void stepper_stop(stepper_E);
 
 #endif

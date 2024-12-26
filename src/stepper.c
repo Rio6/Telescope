@@ -15,6 +15,8 @@ typedef struct {
 typedef struct {
    const stepper_pins_S pins;
    stepper_ustep_E ustep;
+   stepper_mode_E mode;
+   stepper_dir_E dir;
    uint32_t pulse_counter;
    uint32_t steps;
    uint32_t target;
@@ -24,15 +26,18 @@ typedef struct {
 static stepper_state_S stepper_states[STEPPER_COUNT] = {
    [STEPPER_RA] = {
       .pins = {.step = 14, .ms1 = 21, .ms2 = 22, .ms3 = 23, .dir = 12},
+      .mode = STEPPER_TRACKING,
+      .dir = STEPPER_CW,
       .ustep = STEPPER_USTEP_32,
    },
    [STEPPER_DE] = {
       .pins = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13},
+      .mode = STEPPER_TRACKING,
+      .dir = STEPPER_CW,
       .ustep = STEPPER_USTEP_32,
    },
 };
 
-static const uint32_t STEPPER_PERIOD = 500;
 static const gpio_num_t nENA = 19;
 static const gpio_num_t nRST = 32;
 
@@ -59,27 +64,50 @@ void stepper_init(void) {
    }
 }
 
-void stepper_task() {
-   for(stepper_E stepper = STEPPER_0; stepper != STEPPER_COUNT; stepper++) {
-      stepper_state_S *state = &stepper_states[stepper];
-      if(state->pulse_counter == 0) {
-         gpio_set_level(state->pins.step, 1);
-         state->pulse_counter = STEPPER_PERIOD;
-      } else {
-         gpio_set_level(state->pins.step, 0);
-         state->pulse_counter--;
-      }
-   }
-}
-
 bool stepper_busy(stepper_E stepper) {
-   stepper_state_S *state = &stepper_states[stepper];
-   return state->target != state->steps;
+   return false;
 }
 
-void stepper_step(stepper_E stepper, int32_t steps) {
+uint32_t stepper_cpr(stepper_E stepper) {
+   uint8_t ustep_factor;
+   switch(stepper_states[stepper].ustep) {
+      case STEPPER_USTEP_1:
+      case STEPPER_USTEP_1T:
+         ustep_factor = 1;
+         break;
+      case STEPPER_USTEP_2:
+      case STEPPER_USTEP_2T:
+         ustep_factor = 2;
+         break;
+      case STEPPER_USTEP_4:
+         ustep_factor = 4;
+         break;
+      case STEPPER_USTEP_8:
+         ustep_factor = 8;
+         break;
+      case STEPPER_USTEP_16:
+         ustep_factor = 16;
+         break;
+      case STEPPER_USTEP_32:
+         ustep_factor = 32;
+         break;
+      default:
+         ustep_factor = 1;
+         break;
+   }
+   return ustep_factor * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO;
+}
+
+stepper_mode_E stepper_get_mode(stepper_E stepper) {
+   return stepper_states[stepper].mode;
+}
+
+stepper_dir_E stepper_get_dir(stepper_E stepper) {
+   return stepper_states[stepper].dir;
+}
+
+void stepper_set_mode(stepper_E stepper, stepper_mode_E mode, stepper_dir_E dir) {
    stepper_state_S *state = &stepper_states[stepper];
-   state->target += steps;
-   state->pulse_counter = 1;
-   gpio_set_level(state->pins.dir, state->target > state->steps);
+   state->mode = mode;
+   state->dir = dir;
 }

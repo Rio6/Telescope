@@ -21,6 +21,4 @@ void app_main(void) {
 
     esp_timer_create(&args, &task_timer);
     esp_timer_start_periodic(task_timer, 10000); // us
-
-    while(1);
 }
