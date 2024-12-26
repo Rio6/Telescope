@@ -13807,7 +13807,7 @@
 		(fields_autoplaced yes)
 		(uuid "66f25ba5-4ddd-402b-8ab6-aa068efdf703")
 		(property "Reference" "C13"
-			(at 172.5041 129.6042 0)
+			(at 172.5041 129.6041 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -13815,7 +13815,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.1uF"
+		(property "Value" "1uF"
 			(at 172.5041 132.0284 0)
 			(effects
 				(font
