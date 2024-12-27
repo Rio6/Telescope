@@ -160,7 +160,7 @@ void ss_task(void) {
             SS_CHECK(3, 6);
             uint32_t target = ss_get_payload(parser);
             for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               stepper_set_goal(stepper, target);
+               stepper_set_target(stepper, target);
             }
             ss_construct_resp(parser, SS_OK, 0, 0);
             break;
@@ -195,7 +195,7 @@ void ss_task(void) {
 
          case 'h': { // inquire goto target
             SS_CHECK(2, 0);
-            uint32_t target = stepper_get_goal(ss_get_stepper(parser, true));
+            uint32_t target = stepper_get_target(ss_get_stepper(parser, true));
             ss_construct_resp(parser, SS_OK, target, 6);
             break;
          }

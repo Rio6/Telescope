@@ -38,20 +38,20 @@ typedef enum {
 
 void stepper_init(void);
 
+void stepper_start(stepper_E);
+void stepper_stop(stepper_E);
+
 bool stepper_busy(stepper_E);
 uint32_t stepper_cpr(stepper_E);
 uint32_t stepper_count(stepper_E);
 
 void stepper_set_period(stepper_E, uint32_t);
-void stepper_set_goal(stepper_E, uint32_t);
+void stepper_set_target(stepper_E, uint32_t);
 void stepper_set_mode_dir(stepper_E, stepper_mode_E, stepper_dir_E);
 
 uint32_t stepper_get_period(stepper_E);
-uint32_t stepper_get_goal(stepper_E);
+uint32_t stepper_get_target(stepper_E);
 stepper_mode_E stepper_get_mode(stepper_E);
 stepper_dir_E stepper_get_dir(stepper_E);
-
-void stepper_start(stepper_E);
-void stepper_stop(stepper_E);
 
 #endif
