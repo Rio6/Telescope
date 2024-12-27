@@ -100,7 +100,10 @@ void stepper_start(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
    int32_t steps = -1;
    if(state->mode == STEPPER_GOTO) {
-      steps = TODO;
+      if(state->dir == STEPPER_CCW) steps = state->target - state->count;
+      else                          steps = state->count  - state->target;
+      if(steps < 0)                 steps += stepper_cpr(stepper);
+      state->mode = STEPPER_TRACKING; // restore default mode (tracking)
    }
    rmt_transmit_config_t tx_config = { .loop_count = steps };
    ESP_ERROR_CHECK(rmt_enable(state->rmt));
@@ -109,6 +112,7 @@ void stepper_start(stepper_E stepper) {
 
 void stepper_stop(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
+   state->mode = STEPPER_TRACKING;
    ESP_ERROR_CHECK(rmt_disable(state->rmt));
 }
 
@@ -158,7 +162,7 @@ void stepper_set_target(stepper_E stepper, uint32_t target) {
    stepper_states[stepper].target = target;
 }
 
-void stepper_set_mode(stepper_E stepper, stepper_mode_E mode, stepper_dir_E dir) {
+void stepper_set_mode_dir(stepper_E stepper, stepper_mode_E mode, stepper_dir_E dir) {
    stepper_state_S *state = &stepper_states[stepper];
    state->mode = mode;
    state->dir = dir;
