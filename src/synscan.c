@@ -139,30 +139,66 @@ void ss_task(void) {
             ss_construct_resp(parser, SS_OK, STEPPER_FREQ, 4);
             break;
 
-         case 'E': // set position
-            SS_CHECK(3, 6);
-            ss_construct_resp(parser, SS_OK, 0, 0);
+         case 'E': { // set position
+            SS_CHECK(2, 6);
+            ss_error_E error = SS_OK;
+            uint32_t count = ss_get_payload(parser);
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               if(stepper_busy(stepper)) {
+                  error = SS_ERR_NOT_STOPPED;
+                  break;
+               }
+               stepper_set_count(stepper, count);
+            }
+            ss_construct_resp(parser, error, 0, 0);
             break;
+         }
 
          case 'G': { // set motion mode
             SS_CHECK(3, 2);
+            ss_error_E error = SS_OK;
             uint32_t payload = ss_get_payload(parser);
             stepper_mode_E mode = payload & 1;
             stepper_dir_E dir = (payload >> 4) & 1;
             for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               if(stepper_busy(stepper)) {
+                  error = SS_ERR_NOT_STOPPED;
+                  break;
+               }
                stepper_set_mode_dir(stepper, mode, dir);
             }
-            ss_construct_resp(parser, SS_OK, 0, 0);
+            ss_construct_resp(parser, error, 0, 0);
             break;
          }
 
          case 'S': { // set goto target
-            SS_CHECK(3, 6);
+            SS_CHECK(2, 6);
+            ss_error_E error = SS_OK;
             uint32_t target = ss_get_payload(parser);
             for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               if(stepper_busy(stepper)) {
+                  error = SS_ERR_NOT_STOPPED;
+                  break;
+               }
                stepper_set_target(stepper, target);
             }
-            ss_construct_resp(parser, SS_OK, 0, 0);
+            ss_construct_resp(parser, error, 0, 0);
+            break;
+         }
+
+         case 'H': { // set goto target increment
+            SS_CHECK(3, 6);
+            ss_error_E error = SS_OK;
+            uint32_t increment = ss_get_payload(parser);
+            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+               if(stepper_busy(stepper)) {
+                  error = SS_ERR_NOT_STOPPED;
+                  break;
+               }
+               uint32_t count = stepper_get_count(stepper);
+               stepper_set_target(stepper, count + increment);
+            }
+            ss_construct_resp(parser, error, 0, 0);
             break;
          }
 
@@ -184,7 +220,7 @@ void ss_task(void) {
             ss_construct_resp(parser, SS_OK, 0, 0);
             break;
 
-         case 'K': // stop motion
+         case 'K': // stop motion, applies brake steps (once implemented)
          case 'L': // instant stop
             SS_CHECK(3, 0);
             for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
@@ -210,22 +246,23 @@ void ss_task(void) {
          case 'j':    // inquire position
          case 'D':  { // inquire axis position, not sure what the difference is
             SS_CHECK(2, 0);
-            uint32_t target = stepper_count(ss_get_stepper(parser, true));
+            uint32_t target = stepper_get_count(ss_get_stepper(parser, true));
             ss_construct_resp(parser, SS_OK, target, 6);
             break;
          }
 
+         // not implemented
          case 'g': // inquire high speed ratio
             SS_CHECK(2, 0);
             ss_construct_resp(parser, SS_OK, 1, 2);
             break;
 
-         case 'O': // aux switch
-            SS_CHECK(3, 0);
+         case 'M': // set brake point increment
+            SS_CHECK(3, 6);
             ss_construct_resp(parser, SS_OK, 0, 0);
             break;
 
-         case 'P': // AutoGuide speed
+         case 'O': // aux switch
             SS_CHECK(3, 0);
             ss_construct_resp(parser, SS_OK, 0, 0);
             break;
@@ -309,16 +346,15 @@ static void ss_construct_resp(ss_parser_S *parser, ss_error_E error, uint32_t pa
 }
 
 static stepper_E ss_get_stepper(ss_parser_S *parser, bool start) {
-   if(parser->channel == 1)
-     return STEPPER_RA;
-
-   if(parser->channel == 2)
-      return STEPPER_DE;
-
-   if(start)
+   if(start) {
+      if(parser->channel == 2)
+         return STEPPER_DE;
       return STEPPER_RA;
-
-   return STEPPER_DE;
+   } else {
+      if(parser->channel == 1)
+         return STEPPER_DE;
+      return STEPPER_COUNT;
+   }
 }
 
 static uint8_t hexify(uint8_t num) {

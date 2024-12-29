@@ -43,7 +43,9 @@ void stepper_stop(stepper_E);
 
 bool stepper_busy(stepper_E);
 uint32_t stepper_cpr(stepper_E);
-uint32_t stepper_count(stepper_E);
+
+void stepper_set_count(stepper_E, uint32_t);
+uint32_t stepper_get_count(stepper_E);
 
 void stepper_set_period(stepper_E, uint32_t);
 void stepper_set_target(stepper_E, uint32_t);

@@ -44,7 +44,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
 static const gpio_num_t nENA = 19;
 static const gpio_num_t nRST = 32;
 
-static const int PULSE_WIDTH_FACTOR = 2; // 1/2 pulse width
+static const int PULSE_WIDTH_FACTOR = 400;
 
 static rmt_encoder_t *copy_encoder = NULL;
 static rmt_symbol_word_t pulse_symbol = {
@@ -150,7 +150,11 @@ uint32_t stepper_cpr(stepper_E stepper) {
    return ustep_factor * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO;
 }
 
-uint32_t stepper_count(stepper_E stepper) {
+void stepper_set_count(stepper_E stepper, uint32_t count) {
+   stepper_states[stepper].count = count;
+}
+
+uint32_t stepper_get_count(stepper_E stepper) {
    return stepper_states[stepper].count;
 }
 
