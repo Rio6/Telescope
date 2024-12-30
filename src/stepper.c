@@ -1,7 +1,7 @@
 // driver for A5984 https://www.allegromicro.com/~/media/Files/Datasheets/A5984-Datasheet.ashx
 #include "stepper.h"
 #include <driver/gpio.h>
-#include <driver/rmt_tx.h>
+#include <driver/mcpwm_prelude.h>
 
 // declarations
 typedef struct {
@@ -14,12 +14,19 @@ typedef struct {
 } stepper_pins_S;
 
 typedef struct {
+   const stepper_E id;
    const stepper_pins_S pins;
-   rmt_channel_handle_t rmt;
+
+   mcpwm_timer_handle_t timer;
+   mcpwm_oper_handle_t operator;
+   mcpwm_cmpr_handle_t comparator;
+   mcpwm_gen_handle_t generator;
 
    stepper_ustep_E ustep;
    stepper_mode_E mode;
    stepper_dir_E dir;
+   uint32_t period;
+   uint32_t cpr;
 
    uint32_t count;
    uint32_t target;
@@ -28,42 +35,37 @@ typedef struct {
 // definitions
 static stepper_state_S stepper_states[STEPPER_COUNT] = {
    [STEPPER_RA] = {
-      .pins  = {.step = 14, .ms1 = 21, .ms2 = 22, .ms3 = 23, .dir = 12},
-      .mode  = STEPPER_TRACKING,
-      .dir   = STEPPER_CW,
-      .ustep = STEPPER_USTEP_32,
+      .id     = STEPPER_RA,
+      .pins   = {.step = 14, .ms1 = 21, .ms2 = 22, .ms3 = 23, .dir = 12},
+      .mode   = STEPPER_TRACKING,
+      .ustep  = STEPPER_USTEP_32,
+      .dir    = STEPPER_CW,
+      .period = 1000,
+      .cpr    = 32 * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO,
    },
    [STEPPER_DE] = {
-      .pins  = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13},
-      .mode  = STEPPER_TRACKING,
-      .dir   = STEPPER_CW,
-      .ustep = STEPPER_USTEP_32,
+      .id     = STEPPER_DE,
+      .pins   = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13},
+      .mode   = STEPPER_TRACKING,
+      .ustep  = STEPPER_USTEP_32,
+      .dir    = STEPPER_CW,
+      .period = 1000,
+      .cpr    = 32 * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO,
    },
 };
 
 static const gpio_num_t nENA = 19;
 static const gpio_num_t nRST = 32;
+static const uint32_t PULSE_WIDTH_FACTOR = 10;
 
-static const int PULSE_WIDTH_FACTOR = 400;
-
-static rmt_encoder_t *copy_encoder = NULL;
-static rmt_symbol_word_t pulse_symbol = {
-   .duration0 = 1,
-   .level0    = 1,
-   .duration1 = PULSE_WIDTH_FACTOR-1,
-   .level1    = 0,
-};
+static bool stepper_pulse_callback(mcpwm_cmpr_handle_t, const mcpwm_compare_event_data_t*, void*);
 
 void stepper_init(void) {
-   // GPIO config
+   // global GPIO config
    gpio_set_direction(nENA, GPIO_MODE_OUTPUT);
    gpio_set_direction(nRST, GPIO_MODE_OUTPUT);
    gpio_set_level(nENA, 0);
    gpio_set_level(nRST, 1);
-
-   // create RMT encoder that simply sends pulse_symbol when transmitting
-   rmt_copy_encoder_config_t copy_encoder_config = {};
-   rmt_new_copy_encoder(&copy_encoder_config, &copy_encoder);
 
    // config for each stepper
    for(stepper_E stepper = STEPPER_0; stepper != STEPPER_COUNT; stepper++) {
@@ -71,22 +73,58 @@ void stepper_init(void) {
       stepper_state_S *state = &stepper_states[stepper];
 
       // GPIO config
-      gpio_set_direction(pins->step,   GPIO_MODE_OUTPUT);
-      gpio_set_direction(pins->ms1,    GPIO_MODE_OUTPUT);
-      gpio_set_direction(pins->ms2,    GPIO_MODE_OUTPUT);
-      gpio_set_direction(pins->ms3,    GPIO_MODE_OUTPUT);
-      gpio_set_direction(pins->dir,    GPIO_MODE_OUTPUT);
-      gpio_set_direction(pins->nfault, GPIO_MODE_INPUT);
-
-      // RMT config
-      rmt_tx_channel_config_t rmt_config = {
-         .gpio_num          = pins->step,
-         .clk_src           = RMT_CLK_SRC_DEFAULT,
-         .resolution_hz     = STEPPER_FREQ * PULSE_WIDTH_FACTOR,
-         .mem_block_symbols = 64,
-         .trans_queue_depth = 1,
+      gpio_config_t config = {
+         .pin_bit_mask =
+            (1 << pins->step) |
+            (1 << pins->ms1)  |
+            (1 << pins->ms2)  |
+            (1 << pins->ms3)  |
+            (1 << pins->dir),
+         .mode = GPIO_MODE_OUTPUT,
       };
-      rmt_new_tx_channel(&rmt_config, &state->rmt);
+      ESP_ERROR_CHECK(gpio_config(&config));
+      ESP_ERROR_CHECK(gpio_set_direction(pins->nfault, GPIO_MODE_INPUT));
+
+      // MCPWM config
+      mcpwm_timer_config_t timer_config = {
+         .group_id      = stepper,
+         .resolution_hz = STEPPER_FREQ * PULSE_WIDTH_FACTOR,
+         .count_mode    = MCPWM_TIMER_COUNT_MODE_UP,
+         .period_ticks  = state->period,
+      };
+      ESP_ERROR_CHECK(mcpwm_new_timer(&timer_config, &state->timer));
+
+      mcpwm_operator_config_t oper_config = {
+         .group_id = stepper,
+      };
+      ESP_ERROR_CHECK(mcpwm_new_operator(&oper_config, &state->operator));
+      ESP_ERROR_CHECK(mcpwm_operator_connect_timer(state->operator, state->timer));
+
+      mcpwm_comparator_config_t cmpr_config = {0};
+      ESP_ERROR_CHECK(mcpwm_new_comparator(state->operator, &cmpr_config, &state->comparator));
+      ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(state->comparator, 1));
+
+      mcpwm_comparator_event_callbacks_t cmpr_callback = {
+         .on_reach = stepper_pulse_callback,
+      };
+      ESP_ERROR_CHECK(mcpwm_comparator_register_event_callbacks(state->comparator, &cmpr_callback, (void*) state));
+
+      mcpwm_generator_config_t gen_config = {
+         .gen_gpio_num = pins->step,
+      };
+      ESP_ERROR_CHECK(mcpwm_new_generator(state->operator, &gen_config, &state->generator));
+
+      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(state->generator, (mcpwm_gen_timer_event_action_t) {
+         .event  = MCPWM_TIMER_EVENT_EMPTY,
+         .action = MCPWM_GEN_ACTION_HIGH,
+      }));
+
+      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(state->generator, (mcpwm_gen_compare_event_action_t) {
+         .comparator = state->comparator,
+         .action     = MCPWM_GEN_ACTION_LOW,
+      }));
+
+      ESP_ERROR_CHECK(mcpwm_timer_enable(state->timer));
 
       // configure microstep
       stepper_ustep_E ustep = stepper_states[stepper].ustep;
@@ -98,56 +136,24 @@ void stepper_init(void) {
 
 void stepper_start(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
-   int32_t steps = -1;
-   if(state->mode == STEPPER_GOTO) {
-      if(state->dir == STEPPER_CCW) steps = state->target - state->count;
-      else                          steps = state->count  - state->target;
-      if(steps < 0)                 steps += stepper_cpr(stepper);
-      state->mode = STEPPER_TRACKING; // restore default mode (tracking)
-   }
-   rmt_transmit_config_t tx_config = { .loop_count = steps };
-   ESP_ERROR_CHECK(rmt_enable(state->rmt));
-   ESP_ERROR_CHECK(rmt_transmit(state->rmt, copy_encoder, &pulse_symbol, sizeof(pulse_symbol), &tx_config));
+   ESP_ERROR_CHECK(mcpwm_timer_set_period(state->timer, state->period));
+   ESP_ERROR_CHECK(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_START_NO_STOP));
 }
 
 void stepper_stop(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
+   ESP_ERROR_CHECK(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_STOP_FULL));
    state->mode = STEPPER_TRACKING;
-   ESP_ERROR_CHECK(rmt_disable(state->rmt));
 }
 
 bool stepper_busy(stepper_E stepper) {
-   return false;
+   stepper_state_S *state = &stepper_states[stepper];
+   return state->count != state->target;
 }
 
 uint32_t stepper_cpr(stepper_E stepper) {
-   uint8_t ustep_factor;
-   switch(stepper_states[stepper].ustep) {
-      case STEPPER_USTEP_1:
-      case STEPPER_USTEP_1T:
-         ustep_factor = 1;
-         break;
-      case STEPPER_USTEP_2:
-      case STEPPER_USTEP_2T:
-         ustep_factor = 2;
-         break;
-      case STEPPER_USTEP_4:
-         ustep_factor = 4;
-         break;
-      case STEPPER_USTEP_8:
-         ustep_factor = 8;
-         break;
-      case STEPPER_USTEP_16:
-         ustep_factor = 16;
-         break;
-      case STEPPER_USTEP_32:
-         ustep_factor = 32;
-         break;
-      default:
-         ustep_factor = 1;
-         break;
-   }
-   return ustep_factor * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO;
+   stepper_state_S *state = &stepper_states[stepper];
+   return state->cpr;
 }
 
 void stepper_set_count(stepper_E stepper, uint32_t count) {
@@ -159,7 +165,8 @@ uint32_t stepper_get_count(stepper_E stepper) {
 }
 
 void stepper_set_period(stepper_E stepper, uint32_t period) {
-   pulse_symbol.level1 = period * PULSE_WIDTH_FACTOR - 1;
+   stepper_state_S *state = &stepper_states[stepper];
+   state->period = period;
 }
 
 void stepper_set_target(stepper_E stepper, uint32_t target) {
@@ -173,7 +180,8 @@ void stepper_set_mode_dir(stepper_E stepper, stepper_mode_E mode, stepper_dir_E 
 }
 
 uint32_t stepper_get_period(stepper_E stepper) {
-   return (pulse_symbol.level1 + 1) / PULSE_WIDTH_FACTOR;
+   stepper_state_S *state = &stepper_states[stepper];
+   return state->period;
 }
 
 uint32_t stepper_get_target(stepper_E stepper) {
@@ -186,4 +194,21 @@ stepper_mode_E stepper_get_mode(stepper_E stepper) {
 
 stepper_dir_E stepper_get_dir(stepper_E stepper) {
    return stepper_states[stepper].dir;
+}
+
+static bool stepper_pulse_callback(mcpwm_cmpr_handle_t comparator, const mcpwm_compare_event_data_t *edata, void *user_ctx) {
+   stepper_state_S *state = user_ctx;
+   uint32_t count = state->count;
+
+   if(state->dir == STEPPER_CW) {
+      count = (count + 1) % state->cpr;
+   } else {
+      count = (count + state->cpr - 1) % state->cpr;
+   }
+
+   if(count == state->target)
+      stepper_stop(state->id);
+
+   state->count = count;
+   return false;
 }

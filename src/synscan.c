@@ -1,3 +1,4 @@
+// implements https://inter-static.skywatcher.com/downloads/skywatcher_motor_controller_command_set.pdf
 #include "synscan.h"
 #include "stepper.h"
 
@@ -87,8 +88,6 @@ void ss_task(void) {
       if(parser->status != SS_PARSED) continue;
 
       // handle command
-      // https://inter-static.skywatcher.com/downloads/skywatcher_motor_controller_command_set.pdf
-
       #define SS_CHECK(MAX_C, L) \
       if(parser->channel > (MAX_C) || parser->plen != (L)) { \
          ss_construct_resp(parser, SS_ERR_COMMAND_LENGTH, 0, 0); \
