@@ -2,6 +2,7 @@
 #include "stepper.h"
 #include <driver/gpio.h>
 #include <driver/mcpwm_prelude.h>
+#include <esp_attr.h>
 
 // declarations
 typedef struct {
@@ -208,13 +209,13 @@ stepper_dir_E stepper_get_dir(stepper_E stepper) {
    return stepper_states[stepper].dir;
 }
 
-static bool stepper_timer_stop_callback(mcpwm_timer_handle_t timer, const mcpwm_timer_event_data_t *edata, void *user_ctx) {
+static bool IRAM_ATTR stepper_timer_stop_callback(mcpwm_timer_handle_t timer, const mcpwm_timer_event_data_t *edata, void *user_ctx) {
    stepper_state_S *state = user_ctx;
    state->busy = false;
    return false;
 }
 
-static bool stepper_pulse_callback(mcpwm_cmpr_handle_t comparator, const mcpwm_compare_event_data_t *edata, void *user_ctx) {
+static bool IRAM_ATTR stepper_pulse_callback(mcpwm_cmpr_handle_t comparator, const mcpwm_compare_event_data_t *edata, void *user_ctx) {
    stepper_state_S *state = user_ctx;
    uint32_t count = state->count;
 
