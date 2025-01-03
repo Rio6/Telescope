@@ -320,8 +320,8 @@ static void ss_parse(ss_parser_S *parser, uint8_t byte) {
 
 static uint32_t ss_get_payload(ss_parser_S *parser) {
    uint32_t num = 0;
-   for(int i = 0; i < parser->plen; i++) {
-      num = (num << 4) | unhexify(parser->data[i]);
+   for(int i = parser->plen-1; i >= 0; i--) {
+      num = (num << 4) | unhexify(parser->payload[i]);
    }
    return num;
 }

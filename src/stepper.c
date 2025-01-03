@@ -30,6 +30,7 @@ typedef struct {
 
    uint32_t count;
    uint32_t target;
+   bool busy;
 } stepper_state_S;
 
 // definitions
@@ -58,6 +59,7 @@ static const gpio_num_t nENA = 19;
 static const gpio_num_t nRST = 32;
 static const uint32_t PULSE_WIDTH_FACTOR = 10;
 
+static bool stepper_timer_stop_callback(mcpwm_timer_handle_t, const mcpwm_timer_event_data_t*, void*);
 static bool stepper_pulse_callback(mcpwm_cmpr_handle_t, const mcpwm_compare_event_data_t*, void*);
 
 void stepper_init(void) {
@@ -93,6 +95,11 @@ void stepper_init(void) {
          .period_ticks  = state->period,
       };
       ESP_ERROR_CHECK(mcpwm_new_timer(&timer_config, &state->timer));
+
+      mcpwm_timer_event_callbacks_t timer_callback = {
+         .on_stop = stepper_timer_stop_callback,
+      };
+      ESP_ERROR_CHECK(mcpwm_timer_register_event_callbacks(state->timer, &timer_callback, (void*) state));
 
       mcpwm_operator_config_t oper_config = {
          .group_id = stepper,
@@ -136,6 +143,11 @@ void stepper_init(void) {
 
 void stepper_start(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
+
+   if(state->mode == STEPPER_GOTO && state->target == state->count)
+      return;
+
+   state->busy = true;
    ESP_ERROR_CHECK(mcpwm_timer_set_period(state->timer, state->period));
    ESP_ERROR_CHECK(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_START_NO_STOP));
 }
@@ -148,7 +160,7 @@ void stepper_stop(stepper_E stepper) {
 
 bool stepper_busy(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
-   return state->count != state->target;
+   return state->busy;
 }
 
 uint32_t stepper_cpr(stepper_E stepper) {
@@ -194,6 +206,12 @@ stepper_mode_E stepper_get_mode(stepper_E stepper) {
 
 stepper_dir_E stepper_get_dir(stepper_E stepper) {
    return stepper_states[stepper].dir;
+}
+
+static bool stepper_timer_stop_callback(mcpwm_timer_handle_t timer, const mcpwm_timer_event_data_t *edata, void *user_ctx) {
+   stepper_state_S *state = user_ctx;
+   state->busy = false;
+   return false;
 }
 
 static bool stepper_pulse_callback(mcpwm_cmpr_handle_t comparator, const mcpwm_compare_event_data_t *edata, void *user_ctx) {
