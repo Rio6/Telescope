@@ -1,6 +1,7 @@
 // implements https://inter-static.skywatcher.com/downloads/skywatcher_motor_controller_command_set.pdf
 #include "synscan.h"
 #include "stepper.h"
+#include "wifi.h"
 
 #include <driver/uart.h>
 #include <freertos/queue.h>
@@ -36,9 +37,9 @@ typedef struct {
    union {
       struct {
          uint8_t header;
-         uint8_t payload[7];
+         uint8_t payload[64];
       };
-      uint8_t data[8];
+      uint8_t data[65];
    };
 } ss_parser_S;
 
@@ -52,6 +53,10 @@ static void ss_construct_resp(ss_parser_S *parser, ss_error_E error, uint32_t pa
 static stepper_E ss_get_stepper(ss_parser_S *parser, bool start);
 static uint8_t hexify(uint8_t num);
 static uint8_t unhexify(uint8_t hex);
+
+static size_t min(size_t a, size_t b) {
+   return a < b ? a : b;
+}
 
 void ss_init(void) {
    // uart setup
@@ -95,7 +100,70 @@ void ss_task(void) {
       };
 
       switch(parser->header) {
-         case '+': // AT command, ignore
+         case '+': // AT command
+            // reset
+            if(memcmp(parser->payload, "RST", 3) == 0) {
+               esp_restart();
+            }
+
+            // custom AT commands, differ from ESP32 AT commands to avoid unexpected behaviour
+            else if(memcmp(parser->payload, "APSSID?", 7) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(parser->data, wifi_config.ap_ssid, strnlen(wifi_config.ap_ssid, sizeof(wifi_config.ap_ssid)));
+            }
+
+            else if(memcmp(parser->payload, "APPASS?", 7) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(parser->data, wifi_config.ap_pass, strnlen(wifi_config.ap_pass, sizeof(wifi_config.ap_pass)));
+            }
+
+            else if(memcmp(parser->payload, "STASSID?", 8) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(parser->data, wifi_config.sta_ssid, strnlen(wifi_config.sta_ssid, sizeof(wifi_config.sta_ssid)));
+            }
+
+            else if(memcmp(parser->payload, "STAPASS?", 8) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(parser->data, wifi_config.sta_pass, strnlen(wifi_config.sta_pass, sizeof(wifi_config.sta_pass)));
+            }
+
+            else if(memcmp(parser->payload, "APSSID=", 7) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(&wifi_config.ap_ssid, parser->payload + 7, min(parser->plen, sizeof(wifi_config.ap_ssid)));
+            }
+
+            else if(memcmp(parser->payload, "APPASS=", 7) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(&wifi_config.ap_pass, parser->payload + 7, min(parser->plen, sizeof(wifi_config.ap_pass)));
+            }
+
+            else if(memcmp(parser->payload, "STASSID=", 8) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(&wifi_config.sta_ssid, parser->payload + 8, min(parser->plen, sizeof(wifi_config.sta_ssid)));
+            }
+
+            else if(memcmp(parser->payload, "STAPASS=", 8) == 0) {
+               wifi_config_S wifi_config;
+               wifi_get_config(&wifi_config);
+               memcpy(&wifi_config.sta_pass, parser->payload + 8, min(parser->plen, sizeof(wifi_config.sta_pass)));
+            }
+
+            else if(memcmp(parser->payload, "WIFICONN", 8) == 0) {
+               wifi_reconnect();
+            }
+
+            else if(memcmp(parser->payload, "WIFISAVE", 8) == 0) {
+               // TODO
+            }
+
+            // other AT commands, ignoring them because SynScan also sends them
             memcpy(parser->data, "OK\r", 3);
             parser->plen = 2;
             break;
