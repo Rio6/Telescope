@@ -1,6 +1,6 @@
 #include "stepper.h"
-#include "synscan.h"
 #include "wifi.h"
+#include "uart.h"
 
 #include <esp_timer.h>
 #include <esp_event.h>
@@ -9,7 +9,7 @@
 static esp_timer_handle_t task_timer;
 
 void app_task(void *args) {
-    ss_task();
+    uart_task();
 }
 
 void app_main(void) {
@@ -23,9 +23,9 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    uart_init();
     wifi_init();
     stepper_init();
-    ss_init();
 
     esp_timer_create_args_t args = {
         .name = "app_task",

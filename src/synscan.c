@@ -3,16 +3,10 @@
 #include "stepper.h"
 #include "wifi.h"
 
-#include <driver/uart.h>
+#include <esp_log.h>
 #include <freertos/queue.h>
+#include <stdint.h>
 #include <string.h>
-
-typedef enum {
-   SS_IF_UART = 0,
-   SS_IF_BLE,
-   SS_IF_UDP,
-   SS_IF_COUNT,
-} ss_interface_E;
 
 typedef enum {
    SS_ERR_UNKNOWN_COMMAND = 0,
@@ -24,29 +18,6 @@ typedef enum {
    SS_OK,
 } ss_error_E;
 
-typedef enum {
-   SS_PARSING,
-   SS_PARSED,
-   SS_HANDLED,
-} ss_parser_status_E;
-
-typedef struct {
-   ss_parser_status_E status;
-   uint8_t plen;
-   uint8_t channel;
-   union {
-      struct {
-         uint8_t header;
-         uint8_t payload[64];
-      };
-      uint8_t data[65];
-   };
-} ss_parser_S;
-
-static ss_parser_S parsers[SS_IF_COUNT] = {0};
-
-static QueueHandle_t uart_queue;
-
 static void ss_parse(ss_parser_S *parser, uint8_t byte);
 static uint32_t ss_get_payload(ss_parser_S *parser);
 static void ss_construct_resp(ss_parser_S *parser, ss_error_E error, uint32_t payload, size_t plen);
@@ -54,303 +25,220 @@ static stepper_E ss_get_stepper(ss_parser_S *parser, bool start);
 static uint8_t hexify(uint8_t num);
 static uint8_t unhexify(uint8_t hex);
 
-static size_t min(size_t a, size_t b) {
-   return a < b ? a : b;
-}
-
-void ss_init(void) {
-   // uart setup
-   uart_config_t uart_config = {
-      .baud_rate = 115200,
-      .data_bits = UART_DATA_8_BITS,
-      .parity = UART_PARITY_DISABLE,
-      .stop_bits = UART_STOP_BITS_1,
-      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-   };
-   uart_param_config(UART_NUM_0, &uart_config);
-   uart_driver_install(UART_NUM_0, 1024, 1024, 10, &uart_queue, 0);
-
-   // ble setup
-   // udp setup
-}
-
-void ss_task(void) {
-   // read serial
-   ss_parser_S *uart_parser = &parsers[SS_IF_UART];
-   size_t uart_len = 0;
-   uart_get_buffered_data_len(UART_NUM_0, &uart_len);
-   for(size_t i = 0; i < uart_len && uart_parser->status == SS_PARSING; i++) {
-      uint8_t byte = 0;
-      uart_read_bytes(UART_NUM_0, &byte, 1, portMAX_DELAY);
-      ss_parse(uart_parser, byte);
+size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
+   if(parser->status == SS_PARSING) {
+      ss_parse(parser, byte);
    }
 
-   // read ble
-   // read udp
+   if(parser->status != SS_PARSED) return 0;
 
-   for(ss_interface_E i = 0; i < SS_IF_COUNT; i++) {
-      ss_parser_S *parser = &parsers[i];
-      if(parser->status != SS_PARSED) continue;
+   // handle command
+   #define SS_CHECK(MAX_C, L) \
+   if(parser->channel > (MAX_C) || parser->plen != (L)) { \
+      ss_construct_resp(parser, SS_ERR_COMMAND_LENGTH, 0, 0); \
+      break; \
+   };
 
-      // handle command
-      #define SS_CHECK(MAX_C, L) \
-      if(parser->channel > (MAX_C) || parser->plen != (L)) { \
-         ss_construct_resp(parser, SS_ERR_COMMAND_LENGTH, 0, 0); \
-         break; \
-      };
+   switch(parser->header) {
+      case '+': { // AT command
+         // reset
+         if(memcmp(parser->payload, "RST", 3) == 0) {
+            esp_restart();
+         }
 
-      switch(parser->header) {
-         case '+': // AT command
-            // reset
-            if(memcmp(parser->payload, "RST", 3) == 0) {
-               esp_restart();
+         if(memcmp(parser->payload, "LOG=", 4) == 0) {
+            esp_log_level_t log_level = *(parser->payload+4) - '0';
+            if(log_level > ESP_LOG_VERBOSE) {
+               log_level = ESP_LOG_VERBOSE;
             }
+            esp_log_level_set("*", log_level);
+         }
 
-            // custom AT commands, differ from ESP32 AT commands to avoid unexpected behaviour
-            else if(memcmp(parser->payload, "APSSID?", 7) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(parser->data, wifi_config.ap_ssid, strnlen(wifi_config.ap_ssid, sizeof(wifi_config.ap_ssid)));
-            }
+         size_t resp_len = wifi_command(parser->data, parser->plen+1);
 
-            else if(memcmp(parser->payload, "APPASS?", 7) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(parser->data, wifi_config.ap_pass, strnlen(wifi_config.ap_pass, sizeof(wifi_config.ap_pass)));
-            }
-
-            else if(memcmp(parser->payload, "STASSID?", 8) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(parser->data, wifi_config.sta_ssid, strnlen(wifi_config.sta_ssid, sizeof(wifi_config.sta_ssid)));
-            }
-
-            else if(memcmp(parser->payload, "STAPASS?", 8) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(parser->data, wifi_config.sta_pass, strnlen(wifi_config.sta_pass, sizeof(wifi_config.sta_pass)));
-            }
-
-            else if(memcmp(parser->payload, "APSSID=", 7) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(&wifi_config.ap_ssid, parser->payload + 7, min(parser->plen, sizeof(wifi_config.ap_ssid)));
-            }
-
-            else if(memcmp(parser->payload, "APPASS=", 7) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(&wifi_config.ap_pass, parser->payload + 7, min(parser->plen, sizeof(wifi_config.ap_pass)));
-            }
-
-            else if(memcmp(parser->payload, "STASSID=", 8) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(&wifi_config.sta_ssid, parser->payload + 8, min(parser->plen, sizeof(wifi_config.sta_ssid)));
-            }
-
-            else if(memcmp(parser->payload, "STAPASS=", 8) == 0) {
-               wifi_config_S wifi_config;
-               wifi_get_config(&wifi_config);
-               memcpy(&wifi_config.sta_pass, parser->payload + 8, min(parser->plen, sizeof(wifi_config.sta_pass)));
-            }
-
-            else if(memcmp(parser->payload, "WIFICONN", 8) == 0) {
-               wifi_reconnect();
-            }
-
-            else if(memcmp(parser->payload, "WIFISAVE", 8) == 0) {
-               // TODO
-            }
-
-            // other AT commands, ignoring them because SynScan also sends them
+         if(resp_len) {
+            parser->plen = resp_len-1;
+         } else { // not handled by wifi_command, ignore because SynScan also sends them
             memcpy(parser->data, "OK\r", 3);
             parser->plen = 2;
-            break;
-
-         case 'F': // initialization done
-            SS_CHECK(3, 0);
-            ss_construct_resp(parser, SS_OK, 0, 0);
-            break;
-
-         case 'e': // inquire motor board version
-            SS_CHECK(3, 0);
-            ss_construct_resp(parser, SS_OK, 0x000030, 6); // 3.0
-            break;
-
-         case 'a': { // inquire counts per revolution
-            SS_CHECK(2, 0);
-            uint32_t cpr = stepper_cpr(ss_get_stepper(parser, true));
-            ss_construct_resp(parser, SS_OK, cpr, 6);
-            break;
          }
-
-         case 'f': { // inquire status
-            SS_CHECK(2, 0);
-            stepper_E stepper   = ss_get_stepper(parser, true);
-            stepper_mode_E mode = stepper_get_mode(stepper);
-            stepper_dir_E dir   = stepper_get_dir(stepper);
-            bool busy           = stepper_busy(stepper);
-
-            uint16_t status = (mode << 0)
-                            | (dir  << 1)
-                            | (busy << 4)
-                            | (1    << 6); // init done
-
-            ss_construct_resp(parser, SS_OK, status, 4);
-            break;
-         }
-
-         case 'b': // inquire timer frequency
-            SS_CHECK(1, 0);
-            ss_construct_resp(parser, SS_OK, STEPPER_FREQ, 4);
-            break;
-
-         case 'E': { // set position
-            SS_CHECK(2, 6);
-            ss_error_E error = SS_OK;
-            uint32_t count = ss_get_payload(parser);
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               if(stepper_busy(stepper)) {
-                  error = SS_ERR_NOT_STOPPED;
-                  break;
-               }
-               stepper_set_count(stepper, count);
-            }
-            ss_construct_resp(parser, error, 0, 0);
-            break;
-         }
-
-         case 'G': { // set motion mode
-            SS_CHECK(3, 2);
-            ss_error_E error = SS_OK;
-            uint32_t payload = ss_get_payload(parser);
-            stepper_mode_E mode = payload & 1;
-            stepper_dir_E dir = (payload >> 4) & 1;
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               if(stepper_busy(stepper)) {
-                  error = SS_ERR_NOT_STOPPED;
-                  break;
-               }
-               stepper_set_mode_dir(stepper, mode, dir);
-            }
-            ss_construct_resp(parser, error, 0, 0);
-            break;
-         }
-
-         case 'S': { // set goto target
-            SS_CHECK(2, 6);
-            ss_error_E error = SS_OK;
-            uint32_t target = ss_get_payload(parser);
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               if(stepper_busy(stepper)) {
-                  error = SS_ERR_NOT_STOPPED;
-                  break;
-               }
-               stepper_set_target(stepper, target);
-            }
-            ss_construct_resp(parser, error, 0, 0);
-            break;
-         }
-
-         case 'H': { // set goto target increment
-            SS_CHECK(3, 6);
-            ss_error_E error = SS_OK;
-            uint32_t increment = ss_get_payload(parser);
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               if(stepper_busy(stepper)) {
-                  error = SS_ERR_NOT_STOPPED;
-                  break;
-               }
-               uint32_t count = stepper_get_count(stepper);
-               stepper_set_target(stepper, count + increment);
-            }
-            ss_construct_resp(parser, error, 0, 0);
-            break;
-         }
-
-         case 'I': { // set step period (T1)
-            SS_CHECK(3, 6);
-            uint32_t period = ss_get_payload(parser);
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               stepper_set_period(stepper, period);
-            }
-            ss_construct_resp(parser, SS_OK, 0, 0);
-            break;
-         }
-
-         case 'J': // start motion
-            SS_CHECK(3, 0);
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               stepper_start(stepper);
-            }
-            ss_construct_resp(parser, SS_OK, 0, 0);
-            break;
-
-         case 'K': // stop motion, applies brake steps (once implemented)
-         case 'L': // instant stop
-            SS_CHECK(3, 0);
-            for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
-               stepper_stop(stepper);
-            }
-            ss_construct_resp(parser, SS_OK, 0, 0);
-            break;
-
-         case 'h': { // inquire goto target
-            SS_CHECK(2, 0);
-            uint32_t target = stepper_get_target(ss_get_stepper(parser, true));
-            ss_construct_resp(parser, SS_OK, target, 6);
-            break;
-         }
-
-         case 'i': { // inquire step period
-            SS_CHECK(2, 0);
-            uint32_t target = stepper_get_period(ss_get_stepper(parser, true));
-            ss_construct_resp(parser, SS_OK, target, 6);
-            break;
-         }
-
-         case 'j':    // inquire position
-         case 'D':  { // inquire axis position, not sure what the difference is
-            SS_CHECK(2, 0);
-            uint32_t target = stepper_get_count(ss_get_stepper(parser, true));
-            ss_construct_resp(parser, SS_OK, target, 6);
-            break;
-         }
-
-         // not implemented
-         case 'g': // inquire high speed ratio
-            SS_CHECK(2, 0);
-            ss_construct_resp(parser, SS_OK, 1, 2);
-            break;
-
-         case 'M': // set brake point increment
-            SS_CHECK(3, 6);
-            ss_construct_resp(parser, SS_OK, 0, 0);
-            break;
-
-         case 'O': // aux switch
-            SS_CHECK(3, 0);
-            ss_construct_resp(parser, SS_OK, 0, 0);
-            break;
-
-         default:
-            ss_construct_resp(parser, SS_ERR_UNKNOWN_COMMAND, 0, 0);
-            break;
+         break;
       }
-      #undef SS_CHECK_LEN
 
-      parser->status = SS_HANDLED;
+      case 'F': // initialization done
+         SS_CHECK(3, 0);
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      case 'e': // inquire motor board version
+         SS_CHECK(3, 0);
+         ss_construct_resp(parser, SS_OK, 0x000030, 6); // 3.0
+         break;
+
+      case 'a': { // inquire counts per revolution
+         SS_CHECK(2, 0);
+         uint32_t cpr = stepper_cpr(ss_get_stepper(parser, true));
+         ss_construct_resp(parser, SS_OK, cpr, 6);
+         break;
+      }
+
+      case 'f': { // inquire status
+         SS_CHECK(2, 0);
+         stepper_E stepper   = ss_get_stepper(parser, true);
+         stepper_mode_E mode = stepper_get_mode(stepper);
+         stepper_dir_E dir   = stepper_get_dir(stepper);
+         bool busy           = stepper_busy(stepper);
+
+         uint16_t status = (mode << 0)
+                         | (dir  << 1)
+                         | (busy << 4)
+                         | (1    << 6); // init done
+
+         ss_construct_resp(parser, SS_OK, status, 4);
+         break;
+      }
+
+      case 'b': // inquire timer frequency
+         SS_CHECK(1, 0);
+         ss_construct_resp(parser, SS_OK, STEPPER_FREQ, 4);
+         break;
+
+      case 'E': { // set position
+         SS_CHECK(2, 6);
+         ss_error_E error = SS_OK;
+         uint32_t count = ss_get_payload(parser);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            if(stepper_busy(stepper)) {
+               error = SS_ERR_NOT_STOPPED;
+               break;
+            }
+            stepper_set_count(stepper, count);
+         }
+         ss_construct_resp(parser, error, 0, 0);
+         break;
+      }
+
+      case 'G': { // set motion mode
+         SS_CHECK(3, 2);
+         ss_error_E error = SS_OK;
+         uint32_t payload = ss_get_payload(parser);
+         stepper_mode_E mode = payload & 1;
+         stepper_dir_E dir = (payload >> 4) & 1;
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            if(stepper_busy(stepper)) {
+               error = SS_ERR_NOT_STOPPED;
+               break;
+            }
+            stepper_set_mode_dir(stepper, mode, dir);
+         }
+         ss_construct_resp(parser, error, 0, 0);
+         break;
+      }
+
+      case 'S': { // set goto target
+         SS_CHECK(2, 6);
+         ss_error_E error = SS_OK;
+         uint32_t target = ss_get_payload(parser);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            if(stepper_busy(stepper)) {
+               error = SS_ERR_NOT_STOPPED;
+               break;
+            }
+            stepper_set_target(stepper, target);
+         }
+         ss_construct_resp(parser, error, 0, 0);
+         break;
+      }
+
+      case 'H': { // set goto target increment
+         SS_CHECK(3, 6);
+         ss_error_E error = SS_OK;
+         uint32_t increment = ss_get_payload(parser);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            if(stepper_busy(stepper)) {
+               error = SS_ERR_NOT_STOPPED;
+               break;
+            }
+            uint32_t count = stepper_get_count(stepper);
+            stepper_set_target(stepper, count + increment);
+         }
+         ss_construct_resp(parser, error, 0, 0);
+         break;
+      }
+
+      case 'I': { // set step period (T1)
+         SS_CHECK(3, 6);
+         uint32_t period = ss_get_payload(parser);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            stepper_set_period(stepper, period);
+         }
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+      }
+
+      case 'J': // start motion
+         SS_CHECK(3, 0);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            stepper_start(stepper);
+         }
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      case 'K': // stop motion, applies brake steps (once implemented)
+      case 'L': // instant stop
+         SS_CHECK(3, 0);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            stepper_stop(stepper);
+         }
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      case 'h': { // inquire goto target
+         SS_CHECK(2, 0);
+         uint32_t target = stepper_get_target(ss_get_stepper(parser, true));
+         ss_construct_resp(parser, SS_OK, target, 6);
+         break;
+      }
+
+      case 'i': { // inquire step period
+         SS_CHECK(2, 0);
+         uint32_t target = stepper_get_period(ss_get_stepper(parser, true));
+         ss_construct_resp(parser, SS_OK, target, 6);
+         break;
+      }
+
+      case 'j':    // inquire position
+      case 'D':  { // inquire axis position, not sure what the difference is
+         SS_CHECK(2, 0);
+         uint32_t target = stepper_get_count(ss_get_stepper(parser, true));
+         ss_construct_resp(parser, SS_OK, target, 6);
+         break;
+      }
+
+      // not implemented
+      case 'g': // inquire high speed ratio
+         SS_CHECK(2, 0);
+         ss_construct_resp(parser, SS_OK, 1, 2);
+         break;
+
+      case 'M': // set brake point increment
+         SS_CHECK(3, 6);
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      case 'O': // aux switch
+         SS_CHECK(3, 0);
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      default:
+         ss_construct_resp(parser, SS_ERR_UNKNOWN_COMMAND, 0, 0);
+         break;
    }
+   #undef SS_CHECK
 
-   // send serial
-   if(uart_parser->status == SS_HANDLED) {
-      uart_write_bytes(UART_NUM_0, uart_parser->data, uart_parser->plen+1);
-      uart_parser->status = SS_PARSING;
-   }
-
-   // send ble
-   // send udp
+   parser->status = SS_PARSING;
+   return parser->plen + 1;
 }
 
 static void ss_parse(ss_parser_S *parser, uint8_t byte) {
