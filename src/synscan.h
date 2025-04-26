@@ -18,7 +18,7 @@ typedef struct {
          uint8_t header;
          uint8_t payload[64];
       };
-      uint8_t data[65];
+      uint8_t data[65]; // larger than ssid and pass in wifi_config_S
    };
 } ss_parser_S;
 

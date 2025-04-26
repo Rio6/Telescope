@@ -46,18 +46,21 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
             esp_restart();
          }
 
+         size_t resp_len = 0;
+
          if(memcmp(parser->payload, "LOG=", 4) == 0) {
             esp_log_level_t log_level = *(parser->payload+4) - '0';
             if(log_level > ESP_LOG_VERBOSE) {
                log_level = ESP_LOG_VERBOSE;
             }
             esp_log_level_set("*", log_level);
+         } else {
+            resp_len = wifi_command(parser->data, parser->plen+1);
          }
 
-         size_t resp_len = wifi_command(parser->data, parser->plen+1);
-
          if(resp_len) {
-            parser->plen = resp_len-1;
+            parser->data[resp_len] = '\r';
+            parser->plen = resp_len;
          } else { // not handled by wifi_command, ignore because SynScan also sends them
             memcpy(parser->data, "OK\r", 3);
             parser->plen = 2;
@@ -238,6 +241,8 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
    #undef SS_CHECK
 
    parser->status = SS_PARSING;
+   parser->channel = 0;
+
    return parser->plen + 1;
 }
 

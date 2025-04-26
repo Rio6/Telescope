@@ -140,58 +140,60 @@ size_t wifi_command(uint8_t *data, size_t len) {
         size_t mlen = min(len-8, sizeof(wifi_config.ap_ssid));
         if(mlen == 0) {
             wifi_config.enable_ap = false;
+            memset(&wifi_config.ap_ssid, 0, sizeof(wifi_config.ap_ssid));
         } else {
             wifi_config.enable_ap = true;
             memcpy(&wifi_config.ap_ssid, data+8, mlen);
-            memset(&wifi_config.ap_ssid + mlen, 0, sizeof(wifi_config.ap_ssid) - mlen);
+            memset(&wifi_config.ap_ssid[0] + mlen, 0, sizeof(wifi_config.ap_ssid) - mlen);
         }
-        memcpy(data, "OK\r", 3);
-        return 3;
+        memcpy(data, "OK", 2);
+        return 2;
     }
 
     else if(memcmp(data, "+APPASS=", 8) == 0) {
         size_t mlen = min(len-8, sizeof(wifi_config.ap_pass));
         memcpy(&wifi_config.ap_pass, data+8, mlen);
-        memset(&wifi_config.ap_pass + mlen, 0, sizeof(wifi_config.ap_pass) - mlen);
-        memcpy(data, "OK\r", 3);
-        return 3;
+        memset(&wifi_config.ap_pass[0] + mlen, 0, sizeof(wifi_config.ap_pass) - mlen);
+        memcpy(data, "OK", 2);
+        return 2;
     }
 
     else if(memcmp(data, "+STASSID=", 9) == 0) {
         size_t mlen = min(len-9, sizeof(wifi_config.sta_ssid));
         if(mlen == 0) {
             wifi_config.enable_sta = false;
+            memset(&wifi_config.sta_ssid, 0, sizeof(wifi_config.sta_ssid));
         } else {
             wifi_config.enable_sta = true;
             memcpy(&wifi_config.sta_ssid, data+9, mlen);
-            memset(&wifi_config.sta_ssid + mlen, 0, sizeof(wifi_config.sta_ssid) - mlen);
+            memset(&wifi_config.sta_ssid[0] + mlen, 0, sizeof(wifi_config.sta_ssid) - mlen);
         }
-        memcpy(data, "OK\r", 3);
-        return 3;
+        memcpy(data, "OK", 2);
+        return 2;
     }
 
     else if(memcmp(data, "+STAPASS=", 9) == 0) {
         size_t mlen = min(len-9, sizeof(wifi_config.sta_pass));
         memcpy(&wifi_config.sta_pass, data+9, mlen);
-        memset(&wifi_config.sta_pass + mlen, 0, sizeof(wifi_config.sta_pass) - mlen);
-        memcpy(data, "OK\r", 3);
-        return 3;
+        memset(&wifi_config.sta_pass[0] + mlen, 0, sizeof(wifi_config.sta_pass) - mlen);
+        memcpy(data, "OK", 2);
+        return 2;
     }
 
     else if(memcmp(data, "+WIFICONN", 9) == 0) {
         wifi_reconnect();
-        memcpy(data, "OK\r", 3);
-        return 3;
+        memcpy(data, "OK", 2);
+        return 2;
     }
 
     else if(memcmp(data, "+WIFISAVE", 9) == 0) {
         esp_err_t err = nvs_set_blob(nvs, "config", &wifi_config, sizeof(wifi_config));
         if(err == ESP_OK) {
-            memcpy(data, "OK\r", 3);
-            return 3;
+            memcpy(data, "OK", 2);
+            return 2;
         } else {
-            memcpy(data, "FAIL\r", 3);
-            return 5;
+            memcpy(data, "FAIL", 4);
+            return 4;
         }
     }
 
