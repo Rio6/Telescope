@@ -36,4 +36,5 @@ esptool.reset.ResetStrategy._setDTR.__code__       = setDTR.__code__
 esptool.reset.ResetStrategy._setRTS.__code__       = setRTS.__code__
 esptool.reset.ResetStrategy._setDTRandRTS.__code__ = setDTRandRTS.__code__
 
-esptool._main()
+if __name__ == '__main__':
+    esptool._main()
