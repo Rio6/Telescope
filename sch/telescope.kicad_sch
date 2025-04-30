@@ -8532,16 +8532,6 @@
 	)
 	(wire
 		(pts
-			(xy 266.7 123.19) (xy 266.7 124.46)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "e251fd03-1b66-452e-a3d9-97e3a111d6bd")
-	)
-	(wire
-		(pts
 			(xy 135.89 130.81) (xy 139.7 130.81)
 		)
 		(stroke
@@ -9096,7 +9086,7 @@
 		(uuid "570b0ccc-8868-4494-8771-7c5143f6b756")
 	)
 	(label "M2_STEP"
-		(at 266.7 124.46 180)
+		(at 266.7 115.57 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11929,7 +11919,7 @@
 	)
 	(symbol
 		(lib_id "Device:R_US")
-		(at 266.7 119.38 0)
+		(at 266.7 119.38 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -11938,12 +11928,12 @@
 		(fields_autoplaced yes)
 		(uuid "2fcb615a-1135-4b82-8e9c-434e4e4c5e1e")
 		(property "Reference" "R26"
-			(at 268.351 118.1679 0)
+			(at 268.351 118.1678 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
+				(justify right)
 			)
 		)
 		(property "Value" "10k"
@@ -11952,11 +11942,11 @@
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
+				(justify right)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder"
-			(at 267.716 119.634 90)
+			(at 265.684 119.126 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14318,6 +14308,72 @@
 			(project "telescope"
 				(path "/7a0030c5-5f3a-40ee-8491-a5192f52fe77"
 					(reference "R4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 266.7 123.19 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "712319ec-9848-4a17-b972-c93a1ff4357f")
+		(property "Reference" "#PWR037"
+			(at 266.7 129.54 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 266.7 127.3231 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 266.7 123.19 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 266.7 123.19 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" ""
+			(at 266.7 123.19 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "f2e77733-09b7-4e08-b01d-d7ae6aa4ce4b")
+		)
+		(instances
+			(project "telescope"
+				(path "/7a0030c5-5f3a-40ee-8491-a5192f52fe77"
+					(reference "#PWR037")
 					(unit 1)
 				)
 			)
@@ -16889,72 +16945,6 @@
 			(project "telescope"
 				(path "/7a0030c5-5f3a-40ee-8491-a5192f52fe77"
 					(reference "#PWR038")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:+3V3")
-		(at 266.7 115.57 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "aa9805a7-c290-4867-a007-1e4bb28a2e39")
-		(property "Reference" "#PWR037"
-			(at 266.7 119.38 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "+3V3"
-			(at 266.7 111.4369 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 266.7 115.57 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 266.7 115.57 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" ""
-			(at 266.7 115.57 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "2bbbd8b5-8ebf-46b7-9515-6e1de368a8ee")
-		)
-		(instances
-			(project "telescope"
-				(path "/7a0030c5-5f3a-40ee-8491-a5192f52fe77"
-					(reference "#PWR037")
 					(unit 1)
 				)
 			)
