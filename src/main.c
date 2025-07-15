@@ -1,5 +1,6 @@
 #include "stepper.h"
 #include "wifi.h"
+#include "server.h"
 #include "uart.h"
 
 #include <esp_timer.h>
@@ -10,6 +11,7 @@ static esp_timer_handle_t task_timer;
 
 void app_task(void *args) {
     uart_task();
+    server_task();
 }
 
 void app_main(void) {
@@ -25,6 +27,7 @@ void app_main(void) {
 
     uart_init();
     wifi_init();
+    server_init();
     stepper_init();
 
     esp_timer_create_args_t args = {

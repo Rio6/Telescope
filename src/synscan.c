@@ -255,7 +255,7 @@ static void ss_parse(ss_parser_S *parser, uint8_t byte) {
       parser->plen = 0;
    }
 
-   if((byte == '_' || byte == '\r') && (parser->header != 0 && parser->channel != 0)) {
+   if((byte == '_' || byte == '\r' || byte == '\n') && (parser->header != 0 && parser->channel != 0)) {
       parser->status = SS_PARSED;
 
    } else if(byte == ':') { // start of command

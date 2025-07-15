@@ -1,4 +1,5 @@
 #include "synscan.h"
+
 #include <driver/uart.h>
 
 static QueueHandle_t uart_queue;
