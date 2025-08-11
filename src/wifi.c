@@ -2,7 +2,6 @@
 
 #include <esp_wifi.h>
 #include <esp_smartconfig.h>
-#include <esp_log.h>
 #include <nvs_flash.h>
 
 #include <string.h>

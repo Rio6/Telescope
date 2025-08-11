@@ -12,6 +12,7 @@ typedef struct {
    gpio_num_t ms3;
    gpio_num_t dir;
    gpio_num_t nfault;
+   gpio_num_t nena;
 } stepper_pins_S;
 
 typedef struct {
@@ -21,7 +22,8 @@ typedef struct {
    mcpwm_timer_handle_t timer;
    mcpwm_oper_handle_t operator;
    mcpwm_cmpr_handle_t comparator;
-   mcpwm_gen_handle_t generator;
+   mcpwm_gen_handle_t step_generator;
+   mcpwm_gen_handle_t ena_generator;
 
    stepper_ustep_E ustep;
    stepper_mode_E mode;
@@ -38,7 +40,7 @@ typedef struct {
 static stepper_state_S stepper_states[STEPPER_COUNT] = {
    [STEPPER_RA] = {
       .id     = STEPPER_RA,
-      .pins   = {.step = 14, .ms1 = 21, .ms2 = 22, .ms3 = 23, .dir = 12},
+      .pins   = {.step = 14, .ms1 = 21, .ms2 = 22, .ms3 = 23, .dir = 12, .nfault = 34, .nena = 19},
       .mode   = STEPPER_TRACKING,
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
@@ -47,7 +49,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
    },
    [STEPPER_DE] = {
       .id     = STEPPER_DE,
-      .pins   = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13},
+      .pins   = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13, .nfault = 15, .nena = 5},
       .mode   = STEPPER_TRACKING,
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
@@ -56,7 +58,6 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
    },
 };
 
-static const gpio_num_t nENA = 19;
 static const gpio_num_t nRST = 32;
 static const uint32_t PULSE_WIDTH_FACTOR = 10;
 
@@ -65,9 +66,7 @@ static bool stepper_pulse_callback(mcpwm_cmpr_handle_t, const mcpwm_compare_even
 
 void stepper_init(void) {
    // global GPIO config
-   gpio_set_direction(nENA, GPIO_MODE_OUTPUT);
    gpio_set_direction(nRST, GPIO_MODE_OUTPUT);
-   gpio_set_level(nENA, 0);
    gpio_set_level(nRST, 1);
 
    // config for each stepper
@@ -82,7 +81,8 @@ void stepper_init(void) {
             (1 << pins->ms1)  |
             (1 << pins->ms2)  |
             (1 << pins->ms3)  |
-            (1 << pins->dir),
+            (1 << pins->dir)  |
+            (1 << pins->nena),
          .mode = GPIO_MODE_OUTPUT,
       };
       ESP_ERROR_CHECK(gpio_config(&config));
@@ -117,20 +117,39 @@ void stepper_init(void) {
       };
       ESP_ERROR_CHECK(mcpwm_comparator_register_event_callbacks(state->comparator, &cmpr_callback, (void*) state));
 
-      mcpwm_generator_config_t gen_config = {
+      // generator for step signal
+      mcpwm_generator_config_t step_gen_config = {
          .gen_gpio_num = pins->step,
       };
-      ESP_ERROR_CHECK(mcpwm_new_generator(state->operator, &gen_config, &state->generator));
+      ESP_ERROR_CHECK(mcpwm_new_generator(state->operator, &step_gen_config, &state->step_generator));
 
-      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(state->generator, (mcpwm_gen_timer_event_action_t) {
+      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(state->step_generator, (mcpwm_gen_timer_event_action_t) {
          .event  = MCPWM_TIMER_EVENT_EMPTY,
          .action = MCPWM_GEN_ACTION_HIGH,
       }));
 
-      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(state->generator, (mcpwm_gen_compare_event_action_t) {
+      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(state->step_generator, (mcpwm_gen_compare_event_action_t) {
          .comparator = state->comparator,
          .action     = MCPWM_GEN_ACTION_LOW,
       }));
+
+      // generator for enable signal
+      mcpwm_generator_config_t ena_gen_config = {
+         .gen_gpio_num = pins->nena,
+      };
+      ESP_ERROR_CHECK(mcpwm_new_generator(state->operator, &ena_gen_config, &state->ena_generator));
+
+      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(state->ena_generator, (mcpwm_gen_timer_event_action_t) {
+         .event  = MCPWM_TIMER_EVENT_EMPTY,
+         .action = MCPWM_GEN_ACTION_LOW,
+      }));
+
+      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(state->ena_generator, (mcpwm_gen_compare_event_action_t) {
+         .comparator = state->comparator,
+         .action     = MCPWM_GEN_ACTION_HIGH,
+      }));
+
+      gpio_set_level(pins->nena, 1);
 
       ESP_ERROR_CHECK(mcpwm_timer_enable(state->timer));
 
