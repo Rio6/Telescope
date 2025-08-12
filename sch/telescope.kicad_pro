@@ -60,7 +60,8 @@
       ],
       "drc_exclusions": [
         "silk_edge_clearance|213130000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|489e795a-e692-4b1f-90ff-841660086a0b",
-        "silk_edge_clearance|231370000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|17da474d-aa27-490e-953f-4e8183421508"
+        "silk_edge_clearance|231370000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|17da474d-aa27-490e-953f-4e8183421508",
+        "silk_over_copper|194325081|128593497|ba5d8a31-e2b9-41ca-90cc-fcc1ab6b1523|00000000-0000-0000-0000-000000000000"
       ],
       "meta": {
         "version": 2
@@ -424,7 +425,7 @@
       "global_label_dangling": "warning",
       "hier_label_mismatch": "error",
       "label_dangling": "error",
-      "lib_symbol_issues": "warning",
+      "lib_symbol_issues": "ignore",
       "missing_bidi_pin": "warning",
       "missing_input_pin": "warning",
       "missing_power_pin": "error",
@@ -546,11 +547,41 @@
           "label": "DNP",
           "name": "${DNP}",
           "show": true
+        },
+        {
+          "group_by": false,
+          "label": "#",
+          "name": "${ITEM_NUMBER}",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Digikey PN",
+          "name": "Digikey PN",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Sim.Device",
+          "name": "Sim.Device",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Sim.Pins",
+          "name": "Sim.Pins",
+          "show": false
+        },
+        {
+          "group_by": false,
+          "label": "Description",
+          "name": "Description",
+          "show": false
         }
       ],
       "filter_string": "",
       "group_symbols": true,
-      "name": "Grouped By Value",
+      "name": "",
       "sort_asc": true,
       "sort_field": "Reference"
     },
