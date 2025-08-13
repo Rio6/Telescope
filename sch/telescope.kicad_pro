@@ -58,11 +58,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        "silk_edge_clearance|213130000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|489e795a-e692-4b1f-90ff-841660086a0b",
-        "silk_edge_clearance|231370000|80000000|a1a7e3bf-965f-4624-bd11-6854169ca7b6|17da474d-aa27-490e-953f-4e8183421508",
-        "silk_over_copper|194325081|128593497|ba5d8a31-e2b9-41ca-90cc-fcc1ab6b1523|00000000-0000-0000-0000-000000000000"
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -486,7 +482,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "plots/",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "",
