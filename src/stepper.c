@@ -85,8 +85,8 @@ void stepper_init(void) {
             (1 << pins->nena),
          .mode = GPIO_MODE_OUTPUT,
       };
-      ESP_ERROR_CHECK(gpio_config(&config));
-      ESP_ERROR_CHECK(gpio_set_direction(pins->nfault, GPIO_MODE_INPUT));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&config));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_direction(pins->nfault, GPIO_MODE_INPUT));
 
       // MCPWM config
       mcpwm_timer_config_t timer_config = {
@@ -95,40 +95,40 @@ void stepper_init(void) {
          .count_mode    = MCPWM_TIMER_COUNT_MODE_UP,
          .period_ticks  = state->period,
       };
-      ESP_ERROR_CHECK(mcpwm_new_timer(&timer_config, &state->timer));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_timer(&timer_config, &state->timer));
 
       mcpwm_timer_event_callbacks_t timer_callback = {
          .on_stop = stepper_timer_stop_callback,
       };
-      ESP_ERROR_CHECK(mcpwm_timer_register_event_callbacks(state->timer, &timer_callback, (void*) state));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_register_event_callbacks(state->timer, &timer_callback, (void*) state));
 
       mcpwm_operator_config_t oper_config = {
          .group_id = stepper,
       };
-      ESP_ERROR_CHECK(mcpwm_new_operator(&oper_config, &state->operator));
-      ESP_ERROR_CHECK(mcpwm_operator_connect_timer(state->operator, state->timer));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_operator(&oper_config, &state->operator));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_operator_connect_timer(state->operator, state->timer));
 
       mcpwm_comparator_config_t cmpr_config = {0};
-      ESP_ERROR_CHECK(mcpwm_new_comparator(state->operator, &cmpr_config, &state->comparator));
-      ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(state->comparator, 1));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_comparator(state->operator, &cmpr_config, &state->comparator));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_comparator_set_compare_value(state->comparator, 1));
 
       mcpwm_comparator_event_callbacks_t cmpr_callback = {
          .on_reach = stepper_pulse_callback,
       };
-      ESP_ERROR_CHECK(mcpwm_comparator_register_event_callbacks(state->comparator, &cmpr_callback, (void*) state));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_comparator_register_event_callbacks(state->comparator, &cmpr_callback, (void*) state));
 
       // generator for step signal
       mcpwm_generator_config_t step_gen_config = {
          .gen_gpio_num = pins->step,
       };
-      ESP_ERROR_CHECK(mcpwm_new_generator(state->operator, &step_gen_config, &state->step_generator));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_generator(state->operator, &step_gen_config, &state->step_generator));
 
-      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(state->step_generator, (mcpwm_gen_timer_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_timer_event(state->step_generator, (mcpwm_gen_timer_event_action_t) {
          .event  = MCPWM_TIMER_EVENT_EMPTY,
          .action = MCPWM_GEN_ACTION_HIGH,
       }));
 
-      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(state->step_generator, (mcpwm_gen_compare_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_compare_event(state->step_generator, (mcpwm_gen_compare_event_action_t) {
          .comparator = state->comparator,
          .action     = MCPWM_GEN_ACTION_LOW,
       }));
@@ -137,21 +137,21 @@ void stepper_init(void) {
       mcpwm_generator_config_t ena_gen_config = {
          .gen_gpio_num = pins->nena,
       };
-      ESP_ERROR_CHECK(mcpwm_new_generator(state->operator, &ena_gen_config, &state->ena_generator));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_generator(state->operator, &ena_gen_config, &state->ena_generator));
 
-      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(state->ena_generator, (mcpwm_gen_timer_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_timer_event(state->ena_generator, (mcpwm_gen_timer_event_action_t) {
          .event  = MCPWM_TIMER_EVENT_EMPTY,
          .action = MCPWM_GEN_ACTION_LOW,
       }));
 
-      ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(state->ena_generator, (mcpwm_gen_compare_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_compare_event(state->ena_generator, (mcpwm_gen_compare_event_action_t) {
          .comparator = state->comparator,
          .action     = MCPWM_GEN_ACTION_HIGH,
       }));
 
-      gpio_set_level(pins->nena, 1);
+      gpio_set_level(pins->nena, 0);
 
-      ESP_ERROR_CHECK(mcpwm_timer_enable(state->timer));
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_enable(state->timer));
 
       // configure microstep
       stepper_ustep_E ustep = stepper_states[stepper].ustep;
@@ -168,13 +168,13 @@ void stepper_start(stepper_E stepper) {
       return;
 
    state->busy = true;
-   ESP_ERROR_CHECK(mcpwm_timer_set_period(state->timer, state->period));
-   ESP_ERROR_CHECK(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_START_NO_STOP));
+   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, state->period));
+   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_START_NO_STOP));
 }
 
 void stepper_stop(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
-   ESP_ERROR_CHECK(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_STOP_FULL));
+   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_STOP_FULL));
    state->mode = STEPPER_TRACKING;
 }
 

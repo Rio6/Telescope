@@ -20,8 +20,8 @@ static wifi_config_S wifi_config = {0};
 static esp_netif_t *sta_netif, *ap_netif;
 
 void wifi_init(void) {
-    ESP_ERROR_CHECK(nvs_open("wifi", NVS_READWRITE, &nvs));
-    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_open("wifi", NVS_READWRITE, &nvs));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_init());
 
     sta_netif = esp_netif_create_default_wifi_sta();
     assert(sta_netif);
@@ -31,7 +31,7 @@ void wifi_init(void) {
 
     wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
     wifi_init_config.nvs_enable = false;
-    ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_init(&wifi_init_config));
 
     size_t config_len = sizeof(wifi_config);
     esp_err_t err = nvs_get_blob(nvs, "config", &wifi_config, &config_len);
@@ -41,10 +41,10 @@ void wifi_init(void) {
         strncpy(wifi_config.ap_pass, "88888888", sizeof(wifi_config.ap_pass));
         wifi_config.enable_ap = true;
     } else {
-        ESP_ERROR_CHECK(err);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(err);
     }
 
-    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_start());
     wifi_reconnect();
 }
 
@@ -87,7 +87,7 @@ void wifi_reconnect(void) {
         esp_wifi_set_config(WIFI_IF_STA, &esp_wifi_config);
     }
 
-    ESP_ERROR_CHECK(esp_wifi_connect());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_connect());
 }
 
 static size_t min(size_t a, size_t b) {
@@ -187,7 +187,8 @@ size_t wifi_command(uint8_t *data, size_t len) {
             memcpy(data, "OK", 2);
             return 2;
         } else {
-            memcpy(data, "FAIL", 4);
+            const char *msg = esp_err_to_name(err);
+            memcpy(data, msg, strlen(msg));
             return 4;
         }
     }
