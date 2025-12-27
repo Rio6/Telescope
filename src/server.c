@@ -31,13 +31,14 @@ void server_task(void) {
    ssize_t len = recvfrom(sock, buff, sizeof(buff), 0, (struct sockaddr*) &addr, &socklen);
 
    if(len > 0) {
-      ESP_LOGD("server", "%s", buff);
+      ESP_LOGD("server rx", "%s", buff);
    }
 
    for(int i = 0; i < len; i++) {
       size_t resp_len = ss_handle_byte(&server_parser, buff[i]);
 
       if(resp_len) {
+         ESP_LOGD("server tx", "%.*s", resp_len, server_parser.data);
          int err = sendto(sock, server_parser.data, resp_len, 0, (struct sockaddr*) &addr, sizeof(addr));
          assert(err >= 0);
       }

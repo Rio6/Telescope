@@ -123,12 +123,12 @@ void stepper_init(void) {
       };
       ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_generator(state->operator, &step_gen_config, &state->step_generator));
 
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_timer_event(state->step_generator, (mcpwm_gen_timer_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_action_on_timer_event(state->step_generator, (mcpwm_gen_timer_event_action_t) {
          .event  = MCPWM_TIMER_EVENT_EMPTY,
          .action = MCPWM_GEN_ACTION_HIGH,
       }));
 
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_compare_event(state->step_generator, (mcpwm_gen_compare_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_action_on_compare_event(state->step_generator, (mcpwm_gen_compare_event_action_t) {
          .comparator = state->comparator,
          .action     = MCPWM_GEN_ACTION_LOW,
       }));
@@ -139,12 +139,12 @@ void stepper_init(void) {
       };
       ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_generator(state->operator, &ena_gen_config, &state->ena_generator));
 
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_timer_event(state->ena_generator, (mcpwm_gen_timer_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_action_on_timer_event(state->ena_generator, (mcpwm_gen_timer_event_action_t) {
          .event  = MCPWM_TIMER_EVENT_EMPTY,
          .action = MCPWM_GEN_ACTION_LOW,
       }));
 
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_actions_on_compare_event(state->ena_generator, (mcpwm_gen_compare_event_action_t) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_action_on_compare_event(state->ena_generator, (mcpwm_gen_compare_event_action_t) {
          .comparator = state->comparator,
          .action     = MCPWM_GEN_ACTION_HIGH,
       }));
