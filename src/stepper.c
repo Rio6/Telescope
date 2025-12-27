@@ -27,6 +27,7 @@ typedef struct {
 
    stepper_ustep_E ustep;
    stepper_mode_E mode;
+   stepper_speed_E speed;
    stepper_dir_E dir;
    uint32_t period;
    uint32_t cpr;
@@ -42,6 +43,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .id     = STEPPER_RA,
       .pins   = {.step = 14, .ms1 = 21, .ms2 = 22, .ms3 = 23, .dir = 12, .nfault = 34, .nena = 19},
       .mode   = STEPPER_TRACKING,
+      .speed  = STEPPER_SLOW,
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
       .period = 1000,
@@ -49,8 +51,9 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
    },
    [STEPPER_DE] = {
       .id     = STEPPER_DE,
-      .pins   = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13, .nfault = 15, .nena = 5},
+      .pins   = {.step = 15, .ms1 = 25, .ms2 = 26, .ms3 = 27, .dir = 13, .nfault = 35, .nena = 5},
       .mode   = STEPPER_TRACKING,
+      .speed  = STEPPER_SLOW,
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
       .period = 1000,
@@ -88,12 +91,22 @@ void stepper_init(void) {
       ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&config));
       ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_direction(pins->nfault, GPIO_MODE_INPUT));
 
+      // start with motors disabled
+      gpio_set_level(state->pins.nena, 1);
+
+      // configure microstep
+      stepper_ustep_E ustep = stepper_states[stepper].ustep;
+      gpio_set_level(pins->ms1, (ustep >> 0) & 1);
+      gpio_set_level(pins->ms2, (ustep >> 1) & 1);
+      gpio_set_level(pins->ms3, (ustep >> 2) & 1);
+
       // MCPWM config
       mcpwm_timer_config_t timer_config = {
          .group_id      = stepper,
          .resolution_hz = STEPPER_FREQ * PULSE_WIDTH_FACTOR,
          .count_mode    = MCPWM_TIMER_COUNT_MODE_UP,
          .period_ticks  = state->period,
+         .flags.update_period_on_empty = 1,
       };
       ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_timer(&timer_config, &state->timer));
 
@@ -133,31 +146,7 @@ void stepper_init(void) {
          .action     = MCPWM_GEN_ACTION_LOW,
       }));
 
-      // generator for enable signal
-      mcpwm_generator_config_t ena_gen_config = {
-         .gen_gpio_num = pins->nena,
-      };
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_new_generator(state->operator, &ena_gen_config, &state->ena_generator));
-
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_action_on_timer_event(state->ena_generator, (mcpwm_gen_timer_event_action_t) {
-         .event  = MCPWM_TIMER_EVENT_EMPTY,
-         .action = MCPWM_GEN_ACTION_LOW,
-      }));
-
-      ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_generator_set_action_on_compare_event(state->ena_generator, (mcpwm_gen_compare_event_action_t) {
-         .comparator = state->comparator,
-         .action     = MCPWM_GEN_ACTION_HIGH,
-      }));
-
-      gpio_set_level(pins->nena, 0);
-
       ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_enable(state->timer));
-
-      // configure microstep
-      stepper_ustep_E ustep = stepper_states[stepper].ustep;
-      gpio_set_level(pins->ms1, (ustep >> 0) & 1);
-      gpio_set_level(pins->ms2, (ustep >> 1) & 1);
-      gpio_set_level(pins->ms3, (ustep >> 2) & 1);
    }
 }
 
@@ -167,8 +156,14 @@ void stepper_start(stepper_E stepper) {
    if(state->mode == STEPPER_GOTO && state->target == state->count)
       return;
 
+   uint32_t period = state->period;
+   if(state->speed == STEPPER_FAST && period >= STEPPER_FAST_RATIO)
+      period /= STEPPER_FAST_RATIO;
+
    state->busy = true;
-   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, state->period));
+   gpio_set_level(state->pins.nena, 0);
+   gpio_set_level(state->pins.dir, state->dir == STEPPER_CCW);
+   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, period));
    ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_START_NO_STOP));
 }
 
@@ -205,9 +200,10 @@ void stepper_set_target(stepper_E stepper, uint32_t target) {
    stepper_states[stepper].target = target;
 }
 
-void stepper_set_mode_dir(stepper_E stepper, stepper_mode_E mode, stepper_dir_E dir) {
+void stepper_set_mode(stepper_E stepper, stepper_mode_E mode, stepper_speed_E speed, stepper_dir_E dir) {
    stepper_state_S *state = &stepper_states[stepper];
    state->mode = mode;
+   state->speed = speed;
    state->dir = dir;
 }
 
@@ -224,12 +220,21 @@ stepper_mode_E stepper_get_mode(stepper_E stepper) {
    return stepper_states[stepper].mode;
 }
 
+stepper_speed_E stepper_get_speed(stepper_E stepper) {
+   return stepper_states[stepper].speed;
+}
+
 stepper_dir_E stepper_get_dir(stepper_E stepper) {
    return stepper_states[stepper].dir;
 }
 
+bool stepper_get_fault(stepper_E stepper) {
+   return !gpio_get_level(stepper_states[stepper].pins.nfault);
+}
+
 static bool IRAM_ATTR stepper_timer_stop_callback(mcpwm_timer_handle_t timer, const mcpwm_timer_event_data_t *edata, void *user_ctx) {
    stepper_state_S *state = user_ctx;
+   gpio_set_level(state->pins.nena, 1);
    state->busy = false;
    return false;
 }

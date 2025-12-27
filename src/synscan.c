@@ -75,7 +75,7 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
 
       case 'e': // inquire motor board version
          SS_CHECK(3, 0);
-         ss_construct_resp(parser, SS_OK, 0x000030, 6); // 3.0
+         ss_construct_resp(parser, SS_OK, 0x000003, 6); // 3.0
          break;
 
       case 'a': { // inquire counts per revolution
@@ -88,14 +88,17 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
       case 'f': { // inquire status
          SS_CHECK(2, 0);
          stepper_E stepper   = ss_get_stepper(parser, true);
-         stepper_mode_E mode = stepper_get_mode(stepper);
-         stepper_dir_E dir   = stepper_get_dir(stepper);
-         bool busy           = stepper_busy(stepper);
 
-         uint16_t status = (mode << 0)
-                         | (dir  << 1)
-                         | (busy << 4)
-                         | (1    << 6); // init done
+         stepper_mode_E mode   = stepper_get_mode(stepper);
+         stepper_speed_E speed = stepper_get_speed(stepper);
+         stepper_dir_E  dir    = stepper_get_dir(stepper);
+         bool busy             = stepper_busy(stepper);
+
+         uint16_t status = (busy  << 0)
+                         | (mode  << 4)
+                         | (dir   << 5)
+                         | (speed << 6)
+                         | (1     << 12); // init done
 
          ss_construct_resp(parser, SS_OK, status, 4);
          break;
@@ -125,14 +128,20 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
          SS_CHECK(3, 2);
          ss_error_E error = SS_OK;
          uint32_t payload = ss_get_payload(parser);
-         stepper_mode_E mode = payload & 1;
-         stepper_dir_E dir = (payload >> 4) & 1;
+
+         stepper_dir_E dir     = payload >> 0 & 1;
+         stepper_mode_E mode   = payload >> 4 & 1;
+         stepper_speed_E speed = payload >> 5 & 1;
+
+         if(mode == STEPPER_GOTO)
+            speed ^= 1;
+
          for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
             if(stepper_busy(stepper)) {
                error = SS_ERR_NOT_STOPPED;
                break;
             }
-            stepper_set_mode_dir(stepper, mode, dir);
+            stepper_set_mode(stepper, mode, speed, dir);
          }
          ss_construct_resp(parser, error, 0, 0);
          break;
@@ -218,12 +227,12 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
          break;
       }
 
-      // not implemented
       case 'g': // inquire high speed ratio
          SS_CHECK(2, 0);
-         ss_construct_resp(parser, SS_OK, 1, 2);
+         ss_construct_resp(parser, SS_OK, STEPPER_FAST_RATIO, 2);
          break;
 
+      // not implemented
       case 'M': // set brake point increment
          SS_CHECK(3, 6);
          ss_construct_resp(parser, SS_OK, 0, 0);
@@ -281,8 +290,10 @@ static void ss_parse(ss_parser_S *parser, uint8_t byte) {
 
 static uint32_t ss_get_payload(ss_parser_S *parser) {
    uint32_t num = 0;
-   for(int i = parser->plen-1; i >= 0; i--) {
-      num = (num << 4) | unhexify(parser->payload[i]);
+   for(int i = parser->plen-1; i > 0; i-=2) {
+      num = (num << 8)
+         | unhexify(parser->payload[i-1]) << 4
+         | unhexify(parser->payload[i]);
    }
    return num;
 }
@@ -297,9 +308,10 @@ static void ss_construct_resp(ss_parser_S *parser, ss_error_E error, uint32_t pa
       if(plen > 6) plen = 6;
       parser->header = '=';
       parser->plen = 0;
-      while(parser->plen < plen) {
+      while(parser->plen+1 < plen) {
+         parser->payload[parser->plen++] = hexify((payload >> 4) & 0xF);
          parser->payload[parser->plen++] = hexify(payload & 0xF);
-         payload >>= 4;
+         payload >>= 8;
       }
       parser->payload[parser->plen++] = '\r';
    }
