@@ -118,7 +118,7 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
                error = SS_ERR_NOT_STOPPED;
                break;
             }
-            stepper_set_count(stepper, count);
+            stepper_set_count(stepper, count - 0x800000);
          }
          ss_construct_resp(parser, error, 0, 0);
          break;
@@ -132,9 +132,7 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
          stepper_dir_E dir     = payload >> 0 & 1;
          stepper_mode_E mode   = payload >> 4 & 1;
          stepper_speed_E speed = payload >> 5 & 1;
-
-         if(mode == STEPPER_GOTO)
-            speed ^= 1;
+         if(mode == STEPPER_GOTO) speed ^= 1;
 
          for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
             if(stepper_busy(stepper)) {
@@ -156,7 +154,7 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
                error = SS_ERR_NOT_STOPPED;
                break;
             }
-            stepper_set_target(stepper, target);
+            stepper_set_target(stepper, target - 0x800000);
          }
          ss_construct_resp(parser, error, 0, 0);
          break;
@@ -208,7 +206,7 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
       case 'h': { // inquire goto target
          SS_CHECK(2, 0);
          uint32_t target = stepper_get_target(ss_get_stepper(parser, true));
-         ss_construct_resp(parser, SS_OK, target, 6);
+         ss_construct_resp(parser, SS_OK, target + 0x800000, 6);
          break;
       }
 
@@ -222,8 +220,8 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
       case 'j':    // inquire position
       case 'D':  { // inquire axis position, not sure what the difference is
          SS_CHECK(2, 0);
-         uint32_t target = stepper_get_count(ss_get_stepper(parser, true));
-         ss_construct_resp(parser, SS_OK, target, 6);
+         uint32_t count = stepper_get_count(ss_get_stepper(parser, true));
+         ss_construct_resp(parser, SS_OK, count + 0x800000, 6);
          break;
       }
 

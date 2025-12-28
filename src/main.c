@@ -11,18 +11,13 @@
 #include <driver/gpio.h>
 
 static esp_timer_handle_t task_timer;
-static uint8_t heartbeat_counter = 0;
 
 void app_task(void *args) {
    uart_task();
    server_task();
 
-   if(heartbeat_counter == 0) {
-      gpio_set_level(GPIO_NUM_2, 1);
-   } else if(heartbeat_counter == 100) {
-      gpio_set_level(GPIO_NUM_2, 0);
-   }
-   heartbeat_counter = (heartbeat_counter+1) % 200;
+   // LED when motor fault
+   gpio_set_level(GPIO_NUM_2, stepper_get_fault(STEPPER_RA) || stepper_get_fault(STEPPER_DE));
 }
 
 void app_main(void) {

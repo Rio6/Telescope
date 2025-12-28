@@ -46,7 +46,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .speed  = STEPPER_SLOW,
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
-      .period = 1000,
+      .period = 10,
       .cpr    = 32 * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO,
    },
    [STEPPER_DE] = {
@@ -56,7 +56,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .speed  = STEPPER_SLOW,
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
-      .period = 1000,
+      .period = 10,
       .cpr    = 32 * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO,
    },
 };
@@ -170,17 +170,14 @@ void stepper_start(stepper_E stepper) {
 void stepper_stop(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
    ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_STOP_FULL));
-   state->mode = STEPPER_TRACKING;
 }
 
 bool stepper_busy(stepper_E stepper) {
-   stepper_state_S *state = &stepper_states[stepper];
-   return state->busy;
+   return stepper_states[stepper].busy;
 }
 
 uint32_t stepper_cpr(stepper_E stepper) {
-   stepper_state_S *state = &stepper_states[stepper];
-   return state->cpr;
+   return stepper_states[stepper].cpr;
 }
 
 void stepper_set_count(stepper_E stepper, uint32_t count) {
@@ -192,8 +189,7 @@ uint32_t stepper_get_count(stepper_E stepper) {
 }
 
 void stepper_set_period(stepper_E stepper, uint32_t period) {
-   stepper_state_S *state = &stepper_states[stepper];
-   state->period = period;
+   stepper_states[stepper].period = period;
 }
 
 void stepper_set_target(stepper_E stepper, uint32_t target) {
@@ -208,8 +204,7 @@ void stepper_set_mode(stepper_E stepper, stepper_mode_E mode, stepper_speed_E sp
 }
 
 uint32_t stepper_get_period(stepper_E stepper) {
-   stepper_state_S *state = &stepper_states[stepper];
-   return state->period;
+   return stepper_states[stepper].period;
 }
 
 uint32_t stepper_get_target(stepper_E stepper) {
@@ -244,12 +239,12 @@ static bool IRAM_ATTR stepper_pulse_callback(mcpwm_cmpr_handle_t comparator, con
    uint32_t count = state->count;
 
    if(state->dir == STEPPER_CW) {
-      count = (count + 1) % state->cpr;
+      count++;
    } else {
-      count = (count + state->cpr - 1) % state->cpr;
+      count--;
    }
 
-   if(count == state->target)
+   if(state->mode == STEPPER_GOTO && count == state->target)
       stepper_stop(state->id);
 
    state->count = count;
