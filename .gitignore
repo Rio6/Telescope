@@ -2,3 +2,4 @@
 sdkconfig.esp32.old
 CMakeCache.txt
 CMakeFiles/
+__pycache__/

@@ -13,6 +13,7 @@ static esp_timer_handle_t task_timer;
 
 void app_task(void *args) {
    uart_task();
+   wifi_task();
    server_task();
 
    // LED when motor fault

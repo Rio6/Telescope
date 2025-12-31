@@ -41,11 +41,6 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
 
    switch(parser->header) {
       case '+': { // AT command
-         // reset
-         if(memcmp(parser->payload, "RST", 3) == 0) {
-            esp_restart();
-         }
-
          size_t resp_len = 0;
 
          if(memcmp(parser->payload, "LOG=", 4) == 0) {
