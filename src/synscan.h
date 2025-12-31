@@ -16,9 +16,9 @@ typedef struct {
    union {
       struct {
          uint8_t header;
-         uint8_t payload[64];
+         uint8_t payload[127];
       };
-      uint8_t data[65]; // larger than ssid and pass in wifi_config_S
+      uint8_t data[128];
    };
 } ss_parser_S;
 
