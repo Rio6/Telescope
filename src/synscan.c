@@ -33,8 +33,8 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
    if(parser->status != SS_PARSED) return 0;
 
    // handle command
-   #define SS_CHECK(MAX_C, L) \
-   if(parser->channel > (MAX_C) || parser->plen != (L)) { \
+   #define SS_CHECK(MAX_CHAN, EXPECTED_LEN) \
+   if(parser->channel > (MAX_CHAN) || parser->plen != (EXPECTED_LEN)) { \
       ss_construct_resp(parser, SS_ERR_COMMAND_LENGTH, 0, 0); \
       break; \
    };
