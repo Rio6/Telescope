@@ -47,7 +47,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
       .period = 10,
-      .cpr    = 32 * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO,
+      .cpr    = 32 * STEPPER_STEPS_PER_REV * 3 * 256,
    },
    [STEPPER_DE] = {
       .id     = STEPPER_DE,
@@ -57,7 +57,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .ustep  = STEPPER_USTEP_32,
       .dir    = STEPPER_CW,
       .period = 10,
-      .cpr    = 32 * STEPPER_STEPS_PER_REV * STEPPER_GEAR_RATIO,
+      .cpr    = 32 * STEPPER_STEPS_PER_REV * 3 * 257,
    },
 };
 

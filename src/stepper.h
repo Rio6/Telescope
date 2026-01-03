@@ -5,7 +5,6 @@
 #include <stdbool.h>
 
 #define STEPPER_FREQ 16000
-#define STEPPER_GEAR_RATIO 450 // TODO actually measure it
 #define STEPPER_STEPS_PER_REV 200
 #define STEPPER_FAST_RATIO 1
 
