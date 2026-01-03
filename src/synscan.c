@@ -26,15 +26,12 @@ static uint8_t hexify(uint8_t num);
 static uint8_t unhexify(uint8_t hex);
 
 size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
-   if(parser->status == SS_PARSING) {
-      ss_parse(parser, byte);
-   }
-
+   if(parser->status != SS_PARSED) ss_parse(parser, byte);
    if(parser->status != SS_PARSED) return 0;
 
    // handle command
    #define SS_CHECK(MAX_CHAN, EXPECTED_LEN) \
-   if(parser->channel > (MAX_CHAN) || parser->plen != (EXPECTED_LEN)) { \
+   if(parser->channel <= 0 || parser->channel > (MAX_CHAN) || parser->plen != (EXPECTED_LEN)) { \
       ss_construct_resp(parser, SS_ERR_COMMAND_LENGTH, 0, 0); \
       break; \
    };
@@ -243,42 +240,60 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
    }
    #undef SS_CHECK
 
-   parser->status = SS_PARSING;
+   parser->status = SS_IDLE;
    parser->channel = 0;
 
    return parser->plen + 1;
 }
 
 static void ss_parse(ss_parser_S *parser, uint8_t byte) {
-   if(parser->status != SS_PARSING) {
-      return;
+   switch(parser->status) {
+      case SS_PARSED:
+         return;
+
+      case SS_IDLE:
+         if(byte == ':') { // start of command
+            parser->plen = 0;
+            parser->header = 0;
+            parser->channel = 0;
+            parser->status = SS_PARSING;
+            break;
+         }
+
+         if(byte == '+') { // AT commands
+            parser->plen = 0;
+            parser->header = '+';
+            parser->channel = 3; // arbitrary
+            parser->status = SS_PARSING;
+            break;
+         }
+
+         break;
+
+      case SS_PARSING:
+         if(byte == '\r' || byte == '\n') { // end of command
+            parser->status = SS_PARSED;
+            break;
+         }
+
+         if(parser->header == 0) { // header
+            parser->header = byte;
+            break;
+         }
+
+         if(parser->channel == 0) { // channel
+            parser->channel = unhexify(byte);
+            break;
+         }
+
+         // data
+         parser->payload[parser->plen++] = byte;
+         break;
    }
 
-   if(parser->plen >= sizeof(parser->payload)) {
+   // better lose data than overflow buffer
+   if(parser->plen > sizeof(parser->payload)) {
       parser->plen = 0;
-   }
-
-   if((byte == '\r' || byte == '\n') && parser->header != 0 && parser->channel != 0) {
-      parser->status = SS_PARSED;
-
-   } else if(byte == ':') { // start of command
-      parser->plen = 0;
-      parser->header = 0;
-      parser->channel = 0;
-
-   } else if(byte == '+') { // AT commands
-      parser->plen = 0;
-      parser->header = '+';
-      parser->channel = 3; // arbitrary
-
-   } else if(parser->header == 0) { // header
-      parser->header = byte;
-
-   } else if(parser->channel == 0) { // channel
-      parser->channel = unhexify(byte);
-
-   } else { // data
-      parser->payload[parser->plen++] = byte;
    }
 }
 

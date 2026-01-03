@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 typedef enum {
+   SS_IDLE,
    SS_PARSING,
    SS_PARSED,
 } ss_parser_status_E;
