@@ -98,7 +98,7 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
       }
 
       case 'b': // inquire timer frequency
-         SS_CHECK(1, 0);
+         SS_CHECK(3, 0);
          ss_construct_resp(parser, SS_OK, STEPPER_FREQ, 4);
          break;
 
@@ -230,7 +230,12 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
          break;
 
       case 'O': // aux switch
-         SS_CHECK(3, 0);
+         SS_CHECK(3, 1);
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      case 'P': // set autoguide speed
+         SS_CHECK(3, 1);
          ss_construct_resp(parser, SS_OK, 0, 0);
          break;
 
