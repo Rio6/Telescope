@@ -6,7 +6,7 @@
 
 #define STEPPER_FREQ 16000
 #define STEPPER_STEPS_PER_REV 200
-#define STEPPER_FAST_RATIO 1
+#define STEPPER_FAST_RATIO 10
 
 typedef enum {
    STEPPER_0  = 0,
@@ -42,9 +42,11 @@ typedef enum {
 } stepper_dir_E;
 
 void stepper_init(void);
+void stepper_task(void);
 
 void stepper_start(stepper_E);
 void stepper_stop(stepper_E);
+void stepper_stop_instant(stepper_E);
 
 bool stepper_busy(stepper_E);
 uint32_t stepper_cpr(stepper_E);

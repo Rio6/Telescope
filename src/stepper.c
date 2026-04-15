@@ -15,6 +15,13 @@ typedef struct {
    gpio_num_t nena;
 } stepper_pins_S;
 
+typedef enum {
+   STEPPER_STOP,
+   STEPPER_ACCEL,
+   STEPPER_CRUISE,
+   STEPPER_DECCEL,
+} stepper_state_E;
+
 typedef struct {
    const stepper_E id;
    const stepper_pins_S pins;
@@ -34,7 +41,9 @@ typedef struct {
 
    uint32_t count;
    uint32_t target;
-   bool busy;
+   uint32_t target_period;
+   uint32_t accel_speed;
+   stepper_state_E state;
 } stepper_state_S;
 
 // definitions
@@ -48,6 +57,7 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .dir    = STEPPER_CW,
       .period = 10,
       .cpr    = 32 * STEPPER_STEPS_PER_REV * 3 * 256,
+      .state  = STEPPER_STOP,
    },
    [STEPPER_DE] = {
       .id     = STEPPER_DE,
@@ -58,11 +68,16 @@ static stepper_state_S stepper_states[STEPPER_COUNT] = {
       .dir    = STEPPER_CW,
       .period = 10,
       .cpr    = 32 * STEPPER_STEPS_PER_REV * 3 * 257,
+      .state  = STEPPER_STOP,
    },
 };
 
 static const gpio_num_t nRST = 32;
 static const uint32_t PULSE_WIDTH_FACTOR = 10;
+
+static const uint32_t ACCEL_FACTOR = 512;
+static const uint32_t ACCEL_STOP   = 1;
+static const uint32_t ACCEL_STEP   = 1;
 
 static bool stepper_timer_stop_callback(mcpwm_timer_handle_t, const mcpwm_timer_event_data_t*, void*);
 static bool stepper_pulse_callback(mcpwm_cmpr_handle_t, const mcpwm_compare_event_data_t*, void*);
@@ -91,8 +106,9 @@ void stepper_init(void) {
       ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_config(&config));
       ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_set_direction(pins->nfault, GPIO_MODE_INPUT));
 
-      // start with motors disabled
-      gpio_set_level(state->pins.nena, 1);
+      // start with motors /*disabled*/ enabled
+      //gpio_set_level(state->pins.nena, 1);
+      gpio_set_level(state->pins.nena, 0);
 
       // configure microstep
       stepper_ustep_E ustep = stepper_states[stepper].ustep;
@@ -150,30 +166,61 @@ void stepper_init(void) {
    }
 }
 
+void stepper_task(void) {
+   for(stepper_E stepper = STEPPER_0; stepper != STEPPER_COUNT; stepper++) {
+      stepper_state_S *state = &stepper_states[stepper];
+
+      if(state->state == STEPPER_ACCEL) {
+         state->accel_speed += ACCEL_STEP;
+         if(ACCEL_FACTOR / state->accel_speed <= state->target_period) {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, state->target_period));
+            state->state = STEPPER_CRUISE;
+         } else {
+            ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, ACCEL_FACTOR / state->accel_speed));
+         }
+      }
+
+      if(state->state == STEPPER_DECCEL) {
+         if(state->accel_speed > ACCEL_STEP) {
+            state->accel_speed -= ACCEL_STEP;
+            ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, ACCEL_FACTOR / state->accel_speed));
+         } else {
+            stepper_stop_instant(stepper);
+         }
+      }
+   }
+}
+
 void stepper_start(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
 
    if(state->mode == STEPPER_GOTO && state->target == state->count)
       return;
 
-   uint32_t period = state->period;
-   if(state->speed == STEPPER_FAST && period >= STEPPER_FAST_RATIO)
-      period /= STEPPER_FAST_RATIO;
+   state->target_period = state->period * PULSE_WIDTH_FACTOR;
+   if(state->speed == STEPPER_FAST && state->target_period >= STEPPER_FAST_RATIO)
+      state->target_period /= STEPPER_FAST_RATIO;
 
-   state->busy = true;
+   state->accel_speed = ACCEL_STOP;
+   state->state = STEPPER_ACCEL;
+
    gpio_set_level(state->pins.nena, 0);
    gpio_set_level(state->pins.dir, state->dir == STEPPER_CCW);
-   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, period));
+   ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_set_period(state->timer, ACCEL_FACTOR / state->accel_speed));
    ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_START_NO_STOP));
 }
 
 void stepper_stop(stepper_E stepper) {
+   stepper_states[stepper].state = STEPPER_DECCEL;
+}
+
+void stepper_stop_instant(stepper_E stepper) {
    stepper_state_S *state = &stepper_states[stepper];
    ESP_ERROR_CHECK_WITHOUT_ABORT(mcpwm_timer_start_stop(state->timer, MCPWM_TIMER_STOP_FULL));
 }
 
 bool stepper_busy(stepper_E stepper) {
-   return stepper_states[stepper].busy;
+   return stepper_states[stepper].state != STEPPER_STOP;
 }
 
 uint32_t stepper_cpr(stepper_E stepper) {
@@ -229,24 +276,23 @@ bool stepper_get_fault(stepper_E stepper) {
 
 static bool IRAM_ATTR stepper_timer_stop_callback(mcpwm_timer_handle_t timer, const mcpwm_timer_event_data_t *edata, void *user_ctx) {
    stepper_state_S *state = user_ctx;
-   gpio_set_level(state->pins.nena, 1);
-   state->busy = false;
+   //gpio_set_level(state->pins.nena, 1);
+   state->state = STEPPER_STOP;
    return false;
 }
 
 static bool IRAM_ATTR stepper_pulse_callback(mcpwm_cmpr_handle_t comparator, const mcpwm_compare_event_data_t *edata, void *user_ctx) {
    stepper_state_S *state = user_ctx;
-   uint32_t count = state->count;
 
    if(state->dir == STEPPER_CW) {
-      count++;
+      state->count++;
    } else {
-      count--;
+      state->count--;
    }
 
-   if(state->mode == STEPPER_GOTO && count == state->target)
-      stepper_stop(state->id);
+   if(state->mode == STEPPER_GOTO && state->count == state->target) {
+      stepper_stop_instant(state->id);
+   }
 
-   state->count = count;
    return false;
 }

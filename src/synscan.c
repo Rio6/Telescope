@@ -187,11 +187,18 @@ size_t ss_handle_byte(ss_parser_S *parser, uint8_t byte) {
          ss_construct_resp(parser, SS_OK, 0, 0);
          break;
 
-      case 'K': // stop motion, applies brake steps (once implemented)
-      case 'L': // instant stop
+      case 'K': // stop motion, applies brake steps
          SS_CHECK(3, 0);
          for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
             stepper_stop(stepper);
+         }
+         ss_construct_resp(parser, SS_OK, 0, 0);
+         break;
+
+      case 'L': // instant stop
+         SS_CHECK(3, 0);
+         for(stepper_E stepper = ss_get_stepper(parser, true); stepper != ss_get_stepper(parser, false); stepper++) {
+            stepper_stop_instant(stepper);
          }
          ss_construct_resp(parser, SS_OK, 0, 0);
          break;

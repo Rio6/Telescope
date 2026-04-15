@@ -15,6 +15,7 @@ void app_task(void *args) {
    uart_task();
    wifi_task();
    server_task();
+   stepper_task();
 
    // LED when motor fault
    gpio_set_level(GPIO_NUM_2, stepper_get_fault(STEPPER_RA) || stepper_get_fault(STEPPER_DE));
